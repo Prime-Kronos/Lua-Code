@@ -1,0 +1,12 @@
+{
+  "name": "izumrud-restaurant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Izumrud Restaurant ordering website",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
