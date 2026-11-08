@@ -1,12 +1,8 @@
 {
-  "name": "izumrud-restaurant",
+  "name": "elvarq-systems",
   "version": "1.0.0",
   "private": true,
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.21.2",
-    "pg": "^8.13.1"
-  }
+  "description": "ELVARQ SYSTEMS — управление ресторанами, отелями и услугами",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
 }

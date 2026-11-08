@@ -1,1 +1,32 @@
-# Izumrud Restaurant\nResponsive multilingual restaurant menu and ordering starter.\n\nRun: `npm install && npm start`\n\nThe backend creates a PostgreSQL `orders` table and stores orders when `DATABASE_URL` is configured. Menu items/prices/photos remain sample placeholders. Telegram bot notifications, Telegram login, payment provider checkout and admin dashboard are not connected yet.\n
+# ELVARQ SYSTEMS
+
+Универсальная платформа для ресторанов, отелей и сервисных компаний.
+
+## Возможности MVP
+- Клиентская витрина: рестораны, отели, услуги.
+- Ресторан: меню, корзина, создание заказа и выбор QR-столика.
+- Отель: номера, даты заезда/выезда и заявки на бронирование.
+- Услуги: каталог и запись на удобное время.
+- Панель администратора: просмотр заявок и изменение статусов.
+- Интерфейс Uzbek Latin / Русский / English.
+- JSON-хранилище для демонстрационного запуска.
+
+## Запуск
+1. Установите Node.js 18 или новее.
+2. Выполните `npm start`.
+3. Откройте `http://localhost:3000`.
+
+## Демо-вход администратора
+- Логин: `owner`
+- Пароль: `ChangeMe-2026!`
+
+**Перед публичным запуском обязательно измените пароль и добавьте полноценную авторизацию, PostgreSQL, HTTPS, резервные копии и защиту от спама.**
+
+## API
+- `GET /api/catalog`
+- `POST /api/orders`
+- `POST /api/bookings`
+- `POST /api/appointments`
+- `POST /api/admin/login`
+- `GET /api/admin/requests` (Bearer token)
+- `PATCH /api/admin/requests/:type/:id` (Bearer token)
