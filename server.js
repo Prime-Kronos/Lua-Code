@@ -1,17 +1,8 @@
-const express = require('express');
-const path = require('path');
-const app = express();
-const PORT = process.env.PORT || 3000;
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('/api/health', (_req, res) => res.json({ok:true, service:'izumrud-restaurant'}));
-app.post('/api/orders', (req, res) => {
-  const {items, type, table, customer} = req.body || {};
-  if (!Array.isArray(items) || !items.length || !['dinein','takeaway'].includes(type)) {
-    return res.status(400).json({ok:false, error:'Invalid order'});
-  }
-  // Order persistence and Telegram notifications are enabled after secure credentials are configured.
-  res.status(202).json({ok:true, status:'received-demo', message:'Order form received. Staff integration is being configured.'});
-});
-app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
-app.listen(PORT, '0.0.0.0', () => console.log('Izumrud running on '+PORT));
+const express=require('express'),path=require('path'),{Pool}=require('pg');
+const app=express(),PORT=process.env.PORT||3000;
+const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}}):null;
+app.use(express.json());app.use(express.static(path.join(__dirname,'public')));
+app.get('/api/health',async(_req,res)=>{try{if(pool)await pool.query('SELECT 1');res.json({ok:true,service:'izumrud-restaurant',database:!!pool})}catch(e){res.status(503).json({ok:false,error:'database unavailable'})}});
+app.post('/api/orders',async(req,res)=>{const{items,type,table,customer}=req.body||{};if(!Array.isArray(items)||!items.length||!['dinein','takeaway'].includes(type))return res.status(400).json({ok:false,error:'Invalid order'});if(type==='dinein'&&!String(table||'').trim())return res.status(400).json({ok:false,error:'Table number required'});if(!pool)return res.status(503).json({ok:false,error:'Database is not configured'});try{const result=await pool.query('INSERT INTO orders(items, order_type, table_number, customer_name) VALUES($1,$2,$3,$4) RETURNING id,status,created_at',[JSON.stringify(items),type,table||null,customer||null]);res.status(201).json({ok:true,order:result.rows[0]})}catch(e){console.error(e.message);res.status(500).json({ok:false,error:'Could not save order'})}});
+async function start(){if(pool){await pool.query('CREATE TABLE IF NOT EXISTS orders(id BIGSERIAL PRIMARY KEY,items JSONB NOT NULL,order_type TEXT NOT NULL CHECK(order_type IN (\'dinein\',\'takeaway\')),table_number TEXT,customer_name TEXT,status TEXT NOT NULL DEFAULT \'new\',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())')}app.get('*',(_req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));app.listen(PORT,'0.0.0.0',()=>console.log('Izumrud listening on '+PORT))}
+start().catch(e=>{console.error('Startup failed:',e);process.exit(1)});
