@@ -1,11 +1,11 @@
-# ClickFlow — prototype
+# EC — prototype
 
-A lightweight workflow recorder and dashboard prototype.
+A lightweight workflow recorder and dashboard prototype by EC.
 
 ## Stack
 - FastAPI backend
 - SQLAlchemy + PostgreSQL (Neon)
-- HTML, CSS and vanilla JavaScript frontend
+- HTML, CSS and vanilla JavaScript
 
 ## Run locally
 
