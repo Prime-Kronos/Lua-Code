@@ -61,7 +61,7 @@ function renderBusinessRules(rules){
     row.append(keyword,reply,remove);root.append(row);
   });
 }
-function currentBusinessRules(){return $("#business-rules .business-rule").map(row=>({keyword:row.children[0].value.trim(),reply:row.children[1].value.trim()})).filter(x=>x.keyword&&x.reply)}
+function currentBusinessRules(){return $$("#business-rules .business-rule").map(row=>({keyword:row.children[0].value.trim(),reply:row.children[1].value.trim()})).filter(x=>x.keyword&&x.reply)}
 async function saveBusinessConfig(){
   const btn=$("#business-save");btn.disabled=true;$("#business-save-state").textContent="Saving…";
   try{
