@@ -83,7 +83,7 @@ class RunOut(BaseModel):
     created_at: datetime
 
 
-app = FastAPI(title="ClickFlow API", version="0.1.0", description="Workflow recorder prototype API")
+app = FastAPI(title="EC API", version="0.2.0", description="EC workflow automation workspace API")
 
 
 def initialize_database() -> None:
@@ -113,7 +113,7 @@ def on_startup() -> None:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "clickflow-api"}
+    return {"status": "ok", "service": "ec-api"}
 
 
 @app.get("/api/workflows", response_model=list[WorkflowOut])
