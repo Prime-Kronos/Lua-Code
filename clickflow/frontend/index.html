@@ -27,6 +27,8 @@
       <button class="nav-link active" data-view="home"><span class="nav-symbol">▦</span>Overview</button>
       <button class="nav-link" data-view="workflows"><span class="nav-symbol">⌘</span>Workflows<span class="nav-badge" id="nav-count">0</span></button>
       <button class="nav-link" data-view="history"><span class="nav-symbol">◷</span>Run history</button>
+      <button class="nav-link" data-view="settings"><span class="nav-symbol">⚙</span>Settings</button>
+      <button class="nav-link" data-view="plans"><span class="nav-symbol">◇</span>Plans</button>
     </nav>
     <div class="sidebar-bottom"><div class="status-line"><span class="online-dot"></span> All systems operational</div><div class="user-card"><div class="user-avatar" id="user-avatar">U</div><div><b id="user-name">Account</b><small>Free plan</small></div></div></div>
   </aside>
@@ -55,6 +57,17 @@
       <section class="surface"><div class="surface-head"><div><h3>Recent activity</h3><p>Latest workflow runs</p></div><span class="count-pill">Latest 30</span></div><div id="history-list" class="history-list"><div class="loading">Loading…</div></div></section>
       <div class="notice"><span>i</span><p>Prototype runs are simulated. No external accounts or websites are accessed.</p></div>
     </section>
+    <section class="view" id="view-settings">
+      <div class="page-title"><div><div class="eyebrow">ACCOUNT</div><h1>Settings</h1><p>Manage your account security and active sessions.</p></div></div>
+      <div class="settings-grid"><section class="surface settings-card"><div class="surface-head"><div><h3>Account details</h3><p>Your EC account information</p></div></div><div class="setting-line"><span>Email address</span><b id="settings-email">—</b></div><div class="setting-line"><span>Current plan</span><b id="settings-plan">Free</b></div><div class="setting-line"><span>Member since</span><b id="settings-created">—</b></div></section>
+      <section class="surface settings-card"><div class="surface-head"><div><h3>Change password</h3><p>Use at least 12 characters for your new password.</p></div></div><form id="password-form" class="settings-form"><label for="current-password">Current password</label><input id="current-password" type="password" autocomplete="current-password" required maxlength="128"><label for="new-password">New password</label><input id="new-password" type="password" autocomplete="new-password" minlength="12" required maxlength="128"><label for="confirm-password">Confirm new password</label><input id="confirm-password" type="password" autocomplete="new-password" minlength="12" required maxlength="128"><button class="button primary" type="submit">Update password</button><p class="form-message" id="password-message"></p></form></section>
+      <section class="surface settings-card sessions-card"><div class="surface-head"><div><h3>Active sessions</h3><p>Sign out devices you no longer use.</p></div><button class="quiet-button" id="refresh-sessions">Refresh</button></div><div id="sessions-list" class="sessions-list">Loading sessions…</div></section></div>
+    </section>
+    <section class="view" id="view-plans"><div class="page-title"><div><div class="eyebrow">SIMPLE, TRANSPARENT</div><h1>Plans</h1><p>Choose the workspace capacity that fits your work.</p></div></div><div class="plans-grid">
+      <article class="surface plan-card"><div class="plan-label">START HERE</div><h2>Free</h2><div class="plan-price">$0 <small>/ forever</small></div><ul><li>5 saved workflows</li><li>50 demo runs / month</li><li>Account and session security</li><li>Workflow history</li></ul><span class="plan-current">Current plan</span></article>
+      <article class="surface plan-card featured"><div class="plan-label">FOR POWER USERS</div><h2>Pro</h2><div class="plan-price">Coming soon</div><ul><li>Up to 100 workflows</li><li>2,000 runs / month</li><li>Expanded automation features</li><li>Priority support (planned)</li></ul><span class="plan-soon">Not available yet</span></article>
+      <article class="surface plan-card"><div class="plan-label">FOR TEAMS</div><h2>Team</h2><div class="plan-price">Coming soon</div><ul><li>Up to 500 workflows</li><li>10,000 runs / month</li><li>Team workspace (planned)</li><li>Shared management (planned)</li></ul><span class="plan-soon">Not available yet</span></article>
+    </div><div class="notice"><span>i</span><p>Paid plans are previews only. No payment details are collected and no upgrade is being sold yet.</p></div></section>
     <footer><span>© 2026 EC</span><span>Make work flow.</span></footer>
   </main>
 </div>
