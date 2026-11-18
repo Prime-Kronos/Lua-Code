@@ -1,5 +1,5 @@
 from __future__ import annotations
-import hashlib, hmac, os, re, secrets
+import hashlib, hmac, os, re, secrets, json, urllib.request, urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -69,6 +69,22 @@ class RunOwner(Base):
     id:Mapped[int]=mapped_column(Integer,primary_key=True)
     run_id:Mapped[int]=mapped_column(ForeignKey("runs.id",ondelete="CASCADE"),index=True,nullable=False)
     user_id:Mapped[int]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),index=True,nullable=False)
+
+class TelegramPairCode(Base):
+    __tablename__="telegram_pair_codes"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    user_id:Mapped[int]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),index=True,nullable=False)
+    code_hash:Mapped[str]=mapped_column(String(64),unique=True,index=True,nullable=False)
+    expires_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),nullable=False)
+    created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc))
+class TelegramConnection(Base):
+    __tablename__="telegram_connections"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    user_id:Mapped[int]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),unique=True,index=True,nullable=False)
+    chat_id:Mapped[str]=mapped_column(String(40),nullable=False)
+    telegram_user_id:Mapped[str]=mapped_column(String(40),nullable=False)
+    username:Mapped[str]=mapped_column(String(80),default="")
+    connected_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc))
 
 class Credentials(BaseModel):
     email:str=Field(min_length=3,max_length=254)
@@ -160,6 +176,74 @@ def startup()->None:
         if "plan" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN plan VARCHAR(20) NOT NULL DEFAULT 'free'")
         if "failed_attempts" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
         if "locked_until" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN locked_until TIMESTAMP NULL")
+def telegram_send(chat_id:str,text:str)->None:
+    token=os.getenv("TELEGRAM_BOT_TOKEN","")
+    if not token: raise HTTPException(status_code=503,detail="Telegram bot is not configured on the server.")
+    payload=json.dumps({"chat_id":chat_id,"text":text[:4000]}).encode()
+    req=urllib.request.Request("https://api.telegram.org/bot"+token+"/sendMessage",data=payload,headers={"Content-Type":"application/json"},method="POST")
+    try:
+        with urllib.request.urlopen(req,timeout=12) as response:
+            data=json.loads(response.read().decode())
+            if not data.get("ok"): raise RuntimeError("Telegram API rejected the message")
+    except (urllib.error.URLError,TimeoutError,ValueError,RuntimeError) as exc:
+        raise HTTPException(status_code=502,detail="Telegram delivery failed. Check bot configuration.") from exc
+
+@app.get("/api/plugins")
+def plugin_catalog(user:User=Depends(current_user))->dict[str,Any]:
+    with SessionLocal() as db:
+        connection=db.scalar(select(TelegramConnection).where(TelegramConnection.user_id==user.id))
+        return {"plugins":[{"id":"telegram","name":"Telegram","description":"Connect your own Telegram bot to EC workflows.","category":"Messaging","status":"connected" if connection else "available","modes":["Bot API"],"features":["Send messages to your linked private chat","Workflow actions","Private pairing code"]}]}
+@app.get("/api/plugins/telegram/connection")
+def telegram_connection(user:User=Depends(current_user))->dict[str,Any]:
+    with SessionLocal() as db:
+        connection=db.scalar(select(TelegramConnection).where(TelegramConnection.user_id==user.id))
+        return {"connected":bool(connection),"username":connection.username if connection else None,"connected_at":connection.connected_at if connection else None}
+@app.post("/api/plugins/telegram/pair")
+def create_telegram_pair(user:User=Depends(current_user))->dict[str,Any]:
+    if not os.getenv("TELEGRAM_BOT_TOKEN") or not os.getenv("TELEGRAM_WEBHOOK_SECRET"):
+        raise HTTPException(status_code=503,detail="Telegram integration is not configured yet. Add TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET to Render environment variables.")
+    code=f"{secrets.randbelow(100000000):08d}"
+    with SessionLocal() as db:
+        db.execute(delete(TelegramPairCode).where(TelegramPairCode.user_id==user.id))
+        db.add(TelegramPairCode(user_id=user.id,code_hash=hashlib.sha256(code.encode()).hexdigest(),expires_at=utcnow()+timedelta(minutes=10)))
+        db.commit()
+    return {"code":code,"expires_in_seconds":600,"bot_username":os.getenv("TELEGRAM_BOT_USERNAME","ECBussines_bot")}
+@app.delete("/api/plugins/telegram/connection")
+def disconnect_telegram(user:User=Depends(current_user))->dict[str,bool]:
+    with SessionLocal() as db:
+        db.execute(delete(TelegramConnection).where(TelegramConnection.user_id==user.id))
+        db.execute(delete(TelegramPairCode).where(TelegramPairCode.user_id==user.id))
+        db.commit()
+    return {"disconnected":True}
+@app.post("/api/telegram/webhook")
+async def telegram_webhook(request:Request)->dict[str,bool]:
+    expected=os.getenv("TELEGRAM_WEBHOOK_SECRET","")
+    supplied=request.headers.get("X-Telegram-Bot-Api-Secret-Token","")
+    if not expected or not hmac.compare_digest(expected,supplied): raise HTTPException(status_code=403,detail="Forbidden")
+    update=await request.json()
+    message=update.get("message") or update.get("edited_message") or {}
+    chat=message.get("chat") or {}
+    sender=message.get("from") or {}
+    text_in=(message.get("text") or "").strip()
+    if chat.get("type")!="private" or not text_in.startswith("/"): return {"ok":True}
+    parts=text_in.split()
+    command=parts[0].split("@")[0]
+    if command=="/start":
+        telegram_send(str(chat.get("id")),"Welcome to EC. Generate a private pairing code in EC, then send /connect YOUR_CODE here. Codes expire after 10 minutes.")
+    elif command=="/connect" and len(parts)==2 and re.fullmatch(r"\d{8}",parts[1]):
+        digest=hashlib.sha256(parts[1].encode()).hexdigest()
+        with SessionLocal() as db:
+            pair=db.scalar(select(TelegramPairCode).where(TelegramPairCode.code_hash==digest))
+            if pair is None or pair.expires_at.replace(tzinfo=timezone.utc)<=utcnow():
+                if pair: db.delete(pair); db.commit()
+                telegram_send(str(chat.get("id")),"That pairing code is invalid or expired. Generate a new one in EC.")
+            else:
+                db.execute(delete(TelegramConnection).where(TelegramConnection.user_id==pair.user_id))
+                db.add(TelegramConnection(user_id=pair.user_id,chat_id=str(chat.get("id")),telegram_user_id=str(sender.get("id")),username=sender.get("username") or sender.get("first_name") or "Telegram user"))
+                db.delete(pair); db.commit()
+                telegram_send(str(chat.get("id")),"EC Telegram plugin connected successfully.")
+    return {"ok":True}
+
 @app.get("/api/health")
 def health()->dict[str,str]: return {"status":"ok","service":"ec-api","version":"0.4.0"}
 @app.get("/api/plans")
@@ -267,6 +351,14 @@ def run_workflow(workflow_id:int,user:User=Depends(current_user))->Run:
             month_start=utcnow().replace(day=1,hour=0,minute=0,second=0,microsecond=0)
             count=db.scalar(select(__import__("sqlalchemy").func.count()).select_from(RunOwner).join(Run,Run.id==RunOwner.run_id).where(RunOwner.user_id==user.id,Run.created_at>=month_start)) or 0
             if count>=50: raise HTTPException(status_code=403,detail="Monthly Free plan run limit reached (50).")
-        run=Run(workflow_id=workflow.id,workflow_name=workflow.name,status="success",duration_ms=max(420,len(workflow.steps)*310),message="Demo run completed. No external website or account was accessed.")
+        telegram_steps=[s for s in workflow.steps if isinstance(s,dict) and s.get("type")=="telegram.send_message"]
+        if telegram_steps:
+            connection=db.scalar(select(TelegramConnection).where(TelegramConnection.user_id==user.id))
+            if connection is None: raise HTTPException(status_code=400,detail="Connect the Telegram plugin before running this workflow.")
+            for step in telegram_steps:
+                message=str(step.get("text","")).strip()
+                if not message: raise HTTPException(status_code=422,detail="Telegram message action is empty.")
+                telegram_send(connection.chat_id,message)
+        run=Run(workflow_id=workflow.id,workflow_name=workflow.name,status="success",duration_ms=max(420,len(workflow.steps)*310),message="Workflow completed. Telegram messages were sent only to your linked private chat; sample browser actions remain simulated.")
         db.add(run); db.flush(); db.add(RunOwner(run_id=run.id,user_id=user.id)); db.commit(); db.refresh(run); return run
 if FRONTEND_DIR.exists(): app.mount("/",StaticFiles(directory=str(FRONTEND_DIR),html=True),name="frontend")
