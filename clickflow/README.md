@@ -1,6 +1,6 @@
-# EC — prototype
+# EC — Automation Workspace
 
-A lightweight workflow recorder and dashboard prototype by EC.
+EC is a workflow automation workspace with a dashboard, workflow library, run history, and a safe built-in recorder sandbox.
 
 ## Stack
 - FastAPI backend
@@ -21,5 +21,5 @@ Open http://127.0.0.1:8000.
 
 Set `DATABASE_URL` to a PostgreSQL connection string to persist data in Neon. SQLite is used automatically when it is not set.
 
-## Prototype scope
+## Current scope
 The recorder captures interactions inside the built-in demo page. Run currently simulates a safe demo execution and stores a run record; it does not operate arbitrary third-party websites or use external account credentials.
