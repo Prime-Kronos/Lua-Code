@@ -106,3 +106,7 @@ function installButtonIcons(){
  });
 }
 installButtonIcons();
+if(window.MutationObserver){
+ const iconObserver=new MutationObserver(()=>installButtonIcons());
+ iconObserver.observe(document.body,{childList:true,subtree:true});
+}
