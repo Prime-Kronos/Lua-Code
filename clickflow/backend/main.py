@@ -1,5 +1,5 @@
 from __future__ import annotations
-import hashlib, hmac, os, re, secrets, json, urllib.request, urllib.error
+import hashlib, hmac, os, re, secrets, json, logging, urllib.request, urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -167,6 +167,21 @@ async def security_headers(request:Request,call_next):
     response.headers["Cache-Control"]="no-store" if request.url.path.startswith("/api/auth") else response.headers.get("Cache-Control","no-cache")
     if request.url.scheme=="https" or request.headers.get("x-forwarded-proto")=="https": response.headers["Strict-Transport-Security"]="max-age=31536000; includeSubDomains"
     return response
+def configure_telegram_webhook()->None:
+    token=os.getenv("TELEGRAM_BOT_TOKEN","")
+    secret=os.getenv("TELEGRAM_WEBHOOK_SECRET","")
+    if not token or not secret: return
+    base=os.getenv("EC_PUBLIC_URL","https://clickflow-e95l.onrender.com").rstrip("/")
+    payload=json.dumps({"url":base+"/api/telegram/webhook","secret_token":secret,"allowed_updates":["message"]}).encode()
+    req=urllib.request.Request("https://api.telegram.org/bot"+token+"/setWebhook",data=payload,headers={"Content-Type":"application/json"},method="POST")
+    try:
+        with urllib.request.urlopen(req,timeout=12) as response:
+            result=json.loads(response.read().decode())
+            if not result.get("ok"): logging.error("Telegram webhook setup was rejected by Telegram.")
+            else: logging.info("EC Telegram webhook configured.")
+    except Exception:
+        logging.exception("EC could not configure the Telegram webhook.")
+
 @app.on_event("startup")
 def startup()->None:
     Base.metadata.create_all(bind=engine)
@@ -176,6 +191,7 @@ def startup()->None:
         if "plan" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN plan VARCHAR(20) NOT NULL DEFAULT 'free'")
         if "failed_attempts" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
         if "locked_until" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN locked_until TIMESTAMP NULL")
+    configure_telegram_webhook()
 def telegram_send(chat_id:str,text:str)->None:
     token=os.getenv("TELEGRAM_BOT_TOKEN","")
     if not token: raise HTTPException(status_code=503,detail="Telegram bot is not configured on the server.")
