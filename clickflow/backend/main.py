@@ -276,7 +276,8 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
         if text_in and connection_id and chat_id and sender_id:
             with SessionLocal() as db:
                 cfg=db.scalar(select(TelegramBusinessConfig).where(TelegramBusinessConfig.business_connection_id==str(connection_id),TelegramBusinessConfig.is_enabled.is_(True)))
-                if cfg and str(sender_id)!=str((message.get("chat") or {}).get("id")):
+                owner=db.scalar(select(TelegramConnection).where(TelegramConnection.user_id==cfg.user_id)) if cfg else None
+                if cfg and owner and str(sender_id)!=str(owner.telegram_user_id):
                     reply=cfg.reply_text
                     lowered=text_in.casefold()
                     for rule in cfg.keywords or []:
