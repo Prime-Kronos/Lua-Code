@@ -3,10 +3,12 @@ import hashlib, hmac, os, re, secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, create_engine, select
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, create_engine, select, delete
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 BASE_DIR=Path(__file__).resolve().parent.parent
@@ -26,6 +28,9 @@ class User(Base):
     id:Mapped[int]=mapped_column(Integer,primary_key=True)
     email:Mapped[str]=mapped_column(String(254),unique=True,index=True,nullable=False)
     password_hash:Mapped[str]=mapped_column(String(256),nullable=False)
+    plan:Mapped[str]=mapped_column(String(20),default="free",nullable=False)
+    failed_attempts:Mapped[int]=mapped_column(Integer,default=0,nullable=False)
+    locked_until:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc))
 class AuthSession(Base):
     __tablename__="auth_sessions"
@@ -68,11 +73,14 @@ class RunOwner(Base):
 class Credentials(BaseModel):
     email:str=Field(min_length=3,max_length=254)
     password:str=Field(min_length=10,max_length=128)
+class PasswordChange(BaseModel):
+    current_password:str=Field(min_length=1,max_length=128)
+    new_password:str=Field(min_length=12,max_length=128)
 class WorkflowCreate(BaseModel):
     name:str=Field(min_length=1,max_length=140)
     description:str=Field(default="",max_length=1000)
     trigger:str=Field(default="Manual",max_length=80)
-    steps:list[dict[str,Any]]=Field(default_factory=list)
+    steps:list[dict[str,Any]]=Field(default_factory=list,max_length=80)
 class WorkflowOut(BaseModel):
     model_config=ConfigDict(from_attributes=True)
     id:int
@@ -92,8 +100,8 @@ class RunOut(BaseModel):
     message:str
     created_at:datetime
 
-app=FastAPI(title="EC API",version="0.3.0",description="EC workspace with account sessions")
-
+app=FastAPI(title="EC API",version="0.4.0",description="EC secure workspace API")
+def utcnow()->datetime: return datetime.now(timezone.utc)
 def hash_password(password:str,salt:bytes|None=None)->str:
     salt=salt or secrets.token_bytes(16)
     digest=hashlib.scrypt(password.encode(),salt=salt,n=2**14,r=8,p=1,dklen=64)
@@ -106,53 +114,121 @@ def verify_password(password:str,encoded:str)->bool:
         actual=hashlib.scrypt(password.encode(),salt=bytes.fromhex(salt_hex),n=2**14,r=8,p=1,dklen=len(expected))
         return hmac.compare_digest(actual,expected)
     except (ValueError,TypeError): return False
+def token_digest(token:str)->str: return hashlib.sha256(token.encode()).hexdigest()
 def issue_session(db:Session,user:User,response:Response,request:Request)->None:
-    token=secrets.token_urlsafe(36)
-    db.add(AuthSession(user_id=user.id,token_hash=hashlib.sha256(token.encode()).hexdigest(),expires_at=datetime.now(timezone.utc)+timedelta(days=SESSION_DAYS)))
+    token=secrets.token_urlsafe(40)
+    db.add(AuthSession(user_id=user.id,token_hash=token_digest(token),expires_at=utcnow()+timedelta(days=SESSION_DAYS)))
     db.commit()
     response.set_cookie(SESSION_COOKIE,token,max_age=SESSION_DAYS*86400,httponly=True,secure=request.url.scheme=="https" or request.headers.get("x-forwarded-proto")=="https",samesite="lax",path="/")
-def current_user(request:Request)->User:
+def get_user_and_session(request:Request)->tuple[User,int,str]:
     token=request.cookies.get(SESSION_COOKIE)
     if not token: raise HTTPException(status_code=401,detail="Please sign in.")
-    token_hash=hashlib.sha256(token.encode()).hexdigest()
     with SessionLocal() as db:
-        s=db.scalar(select(AuthSession).where(AuthSession.token_hash==token_hash))
-        now=datetime.now(timezone.utc)
-        if s is None or s.expires_at.replace(tzinfo=timezone.utc)<=now: raise HTTPException(status_code=401,detail="Session expired. Please sign in again.")
+        s=db.scalar(select(AuthSession).where(AuthSession.token_hash==token_digest(token)))
+        if s is None or s.expires_at.replace(tzinfo=timezone.utc)<=utcnow(): raise HTTPException(status_code=401,detail="Session expired. Please sign in again.")
         user=db.get(User,s.user_id)
         if user is None: raise HTTPException(status_code=401,detail="Account not found.")
-        return user
+        return user,s.id,token_digest(token)
+def current_user(request:Request)->User: return get_user_and_session(request)[0]
+def owned_workflow(db:Session,workflow_id:int,user_id:int)->Workflow:
+    q=select(Workflow).join(WorkflowOwner,WorkflowOwner.workflow_id==Workflow.id).where(Workflow.id==workflow_id,WorkflowOwner.user_id==user_id)
+    item=db.scalar(q)
+    if item is None: raise HTTPException(status_code=404,detail="Workflow not found")
+    return item
+@app.middleware("http")
+async def security_headers(request:Request,call_next):
+    if request.method in {"POST","PUT","PATCH","DELETE"} and request.url.path.startswith("/api/"):
+        origin=request.headers.get("origin")
+        if origin:
+            origin_host=urlsplit(origin).netloc.lower()
+            request_host=request.headers.get("host","").lower()
+            if origin_host!=request_host: return Response("Origin not allowed",status_code=403)
+    response=await call_next(request)
+    response.headers["X-Content-Type-Options"]="nosniff"
+    response.headers["X-Frame-Options"]="DENY"
+    response.headers["Referrer-Policy"]="strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"]="camera=(), microphone=(), geolocation=()"
+    response.headers["Cache-Control"]="no-store" if request.url.path.startswith("/api/auth") else response.headers.get("Cache-Control","no-cache")
+    if request.url.scheme=="https" or request.headers.get("x-forwarded-proto")=="https": response.headers["Strict-Transport-Security"]="max-age=31536000; includeSubDomains"
+    return response
 @app.on_event("startup")
-def startup()->None: Base.metadata.create_all(bind=engine)
+def startup()->None:
+    Base.metadata.create_all(bind=engine)
+    # Additive migration for existing installations created by the earlier prototype.
+    with engine.begin() as conn:
+        cols={c["name"] for c in __import__("sqlalchemy").inspect(engine).get_columns("users")}
+        if "plan" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN plan VARCHAR(20) NOT NULL DEFAULT 'free'")
+        if "failed_attempts" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
+        if "locked_until" not in cols: conn.exec_driver_sql("ALTER TABLE users ADD COLUMN locked_until TIMESTAMP NULL")
 @app.get("/api/health")
-def health()->dict[str,str]: return {"status":"ok","service":"ec-api"}
+def health()->dict[str,str]: return {"status":"ok","service":"ec-api","version":"0.4.0"}
+@app.get("/api/plans")
+def plans()->dict[str,Any]:
+    return {"current":"free","plans":[{"id":"free","name":"Free","price":0,"workflow_limit":5,"monthly_runs":50,"status":"active"},{"id":"pro","name":"Pro","price":None,"workflow_limit":100,"monthly_runs":2000,"status":"coming_soon"},{"id":"team","name":"Team","price":None,"workflow_limit":500,"monthly_runs":10000,"status":"coming_soon"}]}
 @app.post("/api/auth/register")
 def register(payload:Credentials,request:Request,response:Response)->dict[str,Any]:
     email=payload.email.strip().lower()
     if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]{2,}",email): raise HTTPException(status_code=422,detail="Enter a valid email address.")
     with SessionLocal() as db:
         if db.scalar(select(User.id).where(User.email==email)): raise HTTPException(status_code=409,detail="An account with this email already exists.")
-        user=User(email=email,password_hash=hash_password(payload.password))
+        user=User(email=email,password_hash=hash_password(payload.password),plan="free")
         db.add(user); db.commit(); db.refresh(user); issue_session(db,user,response,request)
-        return {"id":user.id,"email":user.email,"plan":"Free"}
+        return {"id":user.id,"email":user.email,"plan":"free"}
 @app.post("/api/auth/login")
 def login(payload:Credentials,request:Request,response:Response)->dict[str,Any]:
     with SessionLocal() as db:
         user=db.scalar(select(User).where(User.email==payload.email.strip().lower()))
-        if user is None or not verify_password(payload.password,user.password_hash): raise HTTPException(status_code=401,detail="Email or password is incorrect.")
+        if user is None: raise HTTPException(status_code=401,detail="Email or password is incorrect.")
+        if user.locked_until and user.locked_until.replace(tzinfo=timezone.utc)>utcnow(): raise HTTPException(status_code=429,detail="Too many attempts. Try again in 15 minutes.")
+        if not verify_password(payload.password,user.password_hash):
+            user.failed_attempts+=1
+            if user.failed_attempts>=6: user.failed_attempts=0; user.locked_until=utcnow()+timedelta(minutes=15)
+            db.commit()
+            raise HTTPException(status_code=401,detail="Email or password is incorrect.")
+        user.failed_attempts=0; user.locked_until=None; db.commit()
         issue_session(db,user,response,request)
-        return {"id":user.id,"email":user.email,"plan":"Free"}
+        return {"id":user.id,"email":user.email,"plan":user.plan}
 @app.get("/api/auth/me")
-def me(user:User=Depends(current_user))->dict[str,Any]: return {"id":user.id,"email":user.email,"plan":"Free","created_at":user.created_at}
+def me(request:Request)->dict[str,Any]:
+    user,sid,_=get_user_and_session(request)
+    return {"id":user.id,"email":user.email,"plan":user.plan,"created_at":user.created_at}
 @app.post("/api/auth/logout")
 def logout(request:Request,response:Response)->dict[str,bool]:
     token=request.cookies.get(SESSION_COOKIE)
     if token:
         with SessionLocal() as db:
-            s=db.scalar(select(AuthSession).where(AuthSession.token_hash==hashlib.sha256(token.encode()).hexdigest()))
+            s=db.scalar(select(AuthSession).where(AuthSession.token_hash==token_digest(token)))
             if s: db.delete(s); db.commit()
-    response.delete_cookie(SESSION_COOKIE,path="/",httponly=True,samesite="lax")
+    response.delete_cookie(SESSION_COOKIE,path="/",httponly=True,samesite="lax",secure=request.url.scheme=="https" or request.headers.get("x-forwarded-proto")=="https")
     return {"logged_out":True}
+@app.get("/api/account")
+def account(request:Request)->dict[str,Any]:
+    user,sid,digest=get_user_and_session(request)
+    with SessionLocal() as db:
+        sessions=db.scalars(select(AuthSession).where(AuthSession.user_id==user.id,AuthSession.expires_at>utcnow()).order_by(AuthSession.created_at.desc())).all()
+        return {"email":user.email,"plan":user.plan,"created_at":user.created_at,"sessions":[{"id":s.id,"created_at":s.created_at,"expires_at":s.expires_at,"current":s.token_hash==digest} for s in sessions]}
+@app.post("/api/account/password")
+def change_password(payload:PasswordChange,request:Request,response:Response)->dict[str,bool]:
+    user,sid,digest=get_user_and_session(request)
+    with SessionLocal() as db:
+        fresh=db.get(User,user.id)
+        if fresh is None or not verify_password(payload.current_password,fresh.password_hash): raise HTTPException(status_code=400,detail="Current password is incorrect.")
+        if payload.current_password==payload.new_password: raise HTTPException(status_code=422,detail="Choose a different new password.")
+        fresh.password_hash=hash_password(payload.new_password)
+        db.execute(delete(AuthSession).where(AuthSession.user_id==fresh.id))
+        token=secrets.token_urlsafe(40)
+        db.add(AuthSession(user_id=fresh.id,token_hash=token_digest(token),expires_at=utcnow()+timedelta(days=SESSION_DAYS)))
+        db.commit()
+        response.set_cookie(SESSION_COOKIE,token,max_age=SESSION_DAYS*86400,httponly=True,secure=request.url.scheme=="https" or request.headers.get("x-forwarded-proto")=="https",samesite="lax",path="/")
+        return {"password_changed":True,"other_sessions_revoked":True}
+@app.delete("/api/account/sessions/{session_id}")
+def revoke_session(session_id:int,request:Request)->dict[str,bool]:
+    user,sid,digest=get_user_and_session(request)
+    if session_id==sid: raise HTTPException(status_code=400,detail="Use Sign out to end your current session.")
+    with SessionLocal() as db:
+        s=db.scalar(select(AuthSession).where(AuthSession.id==session_id,AuthSession.user_id==user.id))
+        if s is None: raise HTTPException(status_code=404,detail="Session not found")
+        db.delete(s); db.commit(); return {"revoked":True}
 @app.get("/api/workflows",response_model=list[WorkflowOut])
 def list_workflows(user:User=Depends(current_user))->list[Workflow]:
     with SessionLocal() as db:
@@ -161,16 +237,23 @@ def list_workflows(user:User=Depends(current_user))->list[Workflow]:
 @app.post("/api/workflows",response_model=WorkflowOut,status_code=201)
 def create_workflow(payload:WorkflowCreate,user:User=Depends(current_user))->Workflow:
     with SessionLocal() as db:
+        count=db.scalar(select(__import__("sqlalchemy").func.count()).select_from(WorkflowOwner).where(WorkflowOwner.user_id==user.id)) or 0
+        if user.plan=="free" and count>=5: raise HTTPException(status_code=403,detail="Free plan limit reached (5 workflows). Pro is coming soon.")
         item=Workflow(**payload.model_dump()); db.add(item); db.flush()
         db.add(WorkflowOwner(workflow_id=item.id,user_id=user.id)); db.commit(); db.refresh(item); return item
+@app.put("/api/workflows/{workflow_id}",response_model=WorkflowOut)
+def update_workflow(workflow_id:int,payload:WorkflowCreate,user:User=Depends(current_user))->Workflow:
+    with SessionLocal() as db:
+        item=owned_workflow(db,workflow_id,user.id)
+        item.name=payload.name; item.description=payload.description; item.trigger=payload.trigger; item.steps=payload.steps; item.updated_at=utcnow()
+        db.commit(); db.refresh(item); return item
 @app.delete("/api/workflows/{workflow_id}")
 def delete_workflow(workflow_id:int,user:User=Depends(current_user))->dict[str,bool]:
     with SessionLocal() as db:
-        owner=db.scalar(select(WorkflowOwner).where(WorkflowOwner.workflow_id==workflow_id,WorkflowOwner.user_id==user.id))
-        if owner is None: raise HTTPException(status_code=404,detail="Workflow not found")
-        item=db.get(Workflow,workflow_id); db.delete(owner)
-        if item: db.delete(item)
-        db.commit(); return {"deleted":True}
+        item=owned_workflow(db,workflow_id,user.id)
+        db.execute(delete(RunOwner).where(RunOwner.workflow_id==workflow_id))
+        db.execute(delete(Run).where(Run.workflow_id==workflow_id))
+        db.delete(item); db.commit(); return {"deleted":True}
 @app.get("/api/runs",response_model=list[RunOut])
 def list_runs(user:User=Depends(current_user))->list[Run]:
     with SessionLocal() as db:
@@ -179,10 +262,11 @@ def list_runs(user:User=Depends(current_user))->list[Run]:
 @app.post("/api/workflows/{workflow_id}/run",response_model=RunOut)
 def run_workflow(workflow_id:int,user:User=Depends(current_user))->Run:
     with SessionLocal() as db:
-        owner=db.scalar(select(WorkflowOwner).where(WorkflowOwner.workflow_id==workflow_id,WorkflowOwner.user_id==user.id))
-        if owner is None: raise HTTPException(status_code=404,detail="Workflow not found")
-        workflow=db.get(Workflow,workflow_id)
-        if workflow is None: raise HTTPException(status_code=404,detail="Workflow not found")
+        workflow=owned_workflow(db,workflow_id,user.id)
+        if user.plan=="free":
+            month_start=utcnow().replace(day=1,hour=0,minute=0,second=0,microsecond=0)
+            count=db.scalar(select(__import__("sqlalchemy").func.count()).select_from(RunOwner).join(Run,Run.id==RunOwner.run_id).where(RunOwner.user_id==user.id,Run.created_at>=month_start)) or 0
+            if count>=50: raise HTTPException(status_code=403,detail="Monthly Free plan run limit reached (50).")
         run=Run(workflow_id=workflow.id,workflow_name=workflow.name,status="success",duration_ms=max(420,len(workflow.steps)*310),message="Demo run completed. No external website or account was accessed.")
         db.add(run); db.flush(); db.add(RunOwner(run_id=run.id,user_id=user.id)); db.commit(); db.refresh(run); return run
 if FRONTEND_DIR.exists(): app.mount("/",StaticFiles(directory=str(FRONTEND_DIR),html=True),name="frontend")
