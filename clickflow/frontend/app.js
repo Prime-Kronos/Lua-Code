@@ -36,13 +36,46 @@ $("#password-form").addEventListener("submit",async e=>{e.preventDefault();const
 $("#refresh-sessions").addEventListener("click",loadSettings);
 document.addEventListener("click",async e=>{const revoke=e.target.closest("[data-revoke]");if(revoke){if(!confirm("Revoke this session?"))return;try{await api("/account/sessions/"+revoke.dataset.revoke,{method:"DELETE"});await loadSettings();toast("Session revoked.")}catch(err){toast(err.message)}}});
 
-async function loadPlugins(){try{const data=await api("/plugins");const tg=data.plugins.find(p=>p.id==="telegram");$("#plugin-count").textContent=data.plugins.length;const badge=$("#plugin-grid .plugin-status");badge.textContent=tg&&tg.status==="connected"?"Connected":"Available";badge.classList.toggle("connected",!!tg&&tg.status==="connected");await refreshTelegramConnection()}catch(e){toast(e.message)}}
+async function loadPlugins(){try{const data=await api("/plugins");const tg=data.plugins.find(p=>p.id==="telegram");$("#plugin-count").textContent=data.plugins.length;const badge=$("#plugin-grid .plugin-status");badge.textContent=tg&&tg.status==="connected"?"Connected":"Available";badge.classList.toggle("connected",!!tg&&tg.status==="connected");await refreshTelegramConnection();await loadBusinessConfig()}catch(e){toast(e.message)}}
 async function refreshTelegramConnection(){try{const data=await api("/plugins/telegram/connection");$("#telegram-state").textContent=data.connected?"Connected":"Not connected";$("#telegram-state").classList.toggle("connected",data.connected);$("#telegram-connected").hidden=!data.connected;$("#telegram-connected-name").textContent=data.username?"Connected as @"+data.username:"Your Telegram account is linked.";const badge=$("#plugin-grid .plugin-status");badge.textContent=data.connected?"Connected":"Available";badge.classList.toggle("connected",data.connected)}catch(e){$("#telegram-state").textContent=e.message}}
 async function generateTelegramCode(){const btn=$("#telegram-generate");btn.disabled=true;try{const data=await api("/plugins/telegram/pair",{method:"POST"});$("#pair-code").hidden=false;$("#pair-code").textContent=data.code;$("#pair-help").textContent="Expires in 10 minutes. Send /connect "+data.code+" to @"+data.bot_username+" in a private chat.";toast("One-time pairing code created.")}catch(e){toast(e.message)}finally{btn.disabled=false}}
+async function loadBusinessConfig(){
+  try{
+    const data=await api("/plugins/telegram/business");
+    $("#business-link-state").textContent=data.connected?"Business connected":"Waiting for connection";
+    $("#business-link-state").classList.toggle("connected",data.connected);
+    $("#business-editor").hidden=!data.connected;
+    $("#business-waiting").hidden=data.connected;
+    $("#business-reply").value=data.reply_text||"";
+    $("#business-enabled").checked=!!data.is_enabled;
+    renderBusinessRules(data.keywords||[]);
+  }catch(e){$("#business-save-state").textContent=e.message}
+}
+function renderBusinessRules(rules){
+  const root=$("#business-rules");root.innerHTML="";
+  rules.forEach((rule,i)=>{
+    const row=document.createElement("div");row.className="business-rule";
+    const keyword=document.createElement("input");keyword.maxLength=80;keyword.placeholder="Keyword (e.g. price)";keyword.value=rule.keyword||"";
+    const reply=document.createElement("input");reply.maxLength=1000;reply.placeholder="Reply for this keyword";reply.value=rule.reply||"";
+    const remove=document.createElement("button");remove.type="button";remove.className="quiet-button danger";remove.textContent="×";remove.setAttribute("aria-label","Remove rule");remove.addEventListener("click",()=>{row.remove()});
+    row.append(keyword,reply,remove);root.append(row);
+  });
+}
+function currentBusinessRules(){return $("#business-rules .business-rule").map(row=>({keyword:row.children[0].value.trim(),reply:row.children[1].value.trim()})).filter(x=>x.keyword&&x.reply)}
+async function saveBusinessConfig(){
+  const btn=$("#business-save");btn.disabled=true;$("#business-save-state").textContent="Saving…";
+  try{
+    await api("/plugins/telegram/business",{method:"PUT",body:JSON.stringify({is_enabled:$("#business-enabled").checked,reply_text:$("#business-reply").value.trim(),keywords:currentBusinessRules()})});
+    $("#business-save-state").textContent="Saved · "+new Date().toLocaleTimeString();toast("Telegram Business configuration saved.");
+  }catch(e){$("#business-save-state").textContent=e.message;toast(e.message)}
+  finally{btn.disabled=false}
+}
 async function disconnectTelegram(){if(!confirm("Disconnect the Telegram plugin from this EC account?"))return;try{await api("/plugins/telegram/connection",{method:"DELETE"});$("#pair-code").hidden=true;await loadPlugins();toast("Telegram disconnected.")}catch(e){toast(e.message)}}
 $("#telegram-open").addEventListener("click",()=>$("#telegram-detail").scrollIntoView({behavior:"smooth",block:"start"}));
 $("#telegram-generate").addEventListener("click",generateTelegramCode);
 $("#telegram-refresh").addEventListener("click",refreshTelegramConnection);
 $("#telegram-disconnect").addEventListener("click",disconnectTelegram);
+$("#business-add-rule").addEventListener("click",()=>{const rules=currentBusinessRules();rules.push({keyword:"",reply:""});renderBusinessRules(rules)});
+$("#business-save").addEventListener("click",saveBusinessConfig);
 $("#plugin-search").addEventListener("input",e=>{$("#plugin-grid .plugin-card").style.display="telegram".includes(e.target.value.trim().toLowerCase())?"":"none"});
 $("#add-telegram-action").addEventListener("click",()=>{const text=$("#telegram-action-text").value.trim();if(!text)return toast("Write a Telegram message first.");steps.push({type:"telegram.send_message",label:"Send Telegram message",text,detail:text.slice(0,70)});renderSteps();$("#telegram-action-text").value="";toast("Telegram action added to workflow.")});
