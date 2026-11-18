@@ -86,6 +86,21 @@ class TelegramConnection(Base):
     username:Mapped[str]=mapped_column(String(80),default="")
     connected_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc))
 
+class TelegramBusinessConfig(Base):
+    __tablename__="telegram_business_configs"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    user_id:Mapped[int]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),unique=True,index=True,nullable=False)
+    business_connection_id:Mapped[str|None]=mapped_column(String(200),nullable=True,index=True)
+    is_enabled:Mapped[bool]=mapped_column(default=False,nullable=False)
+    reply_text:Mapped[str]=mapped_column(Text,default="Здравствуйте! Спасибо за сообщение. Мы скоро ответим.",nullable=False)
+    keywords:Mapped[list]=mapped_column(JSON,default=list,nullable=False)
+    updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc),onupdate=lambda:datetime.now(timezone.utc))
+
+class TelegramBusinessConfigIn(BaseModel):
+    is_enabled:bool=False
+    reply_text:str=Field(min_length=1,max_length=3500)
+    keywords:list[dict[str,str]]=Field(default_factory=list,max_length=20)
+
 class Credentials(BaseModel):
     email:str=Field(min_length=3,max_length=254)
     password:str=Field(min_length=10,max_length=128)
@@ -172,7 +187,7 @@ def configure_telegram_webhook()->None:
     secret=os.getenv("TELEGRAM_WEBHOOK_SECRET","")
     if not token or not secret: return
     base=os.getenv("EC_PUBLIC_URL","https://clickflow-e95l.onrender.com").rstrip("/")
-    payload=json.dumps({"url":base+"/api/telegram/webhook","secret_token":secret,"allowed_updates":["message"]}).encode()
+    payload=json.dumps({"url":base+"/api/telegram/webhook","secret_token":secret,"allowed_updates":["message","business_connection","business_message","edited_business_message"]}).encode()
     req=urllib.request.Request("https://api.telegram.org/bot"+token+"/setWebhook",data=payload,headers={"Content-Type":"application/json"},method="POST")
     try:
         with urllib.request.urlopen(req,timeout=12) as response:
@@ -237,6 +252,45 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
     supplied=request.headers.get("X-Telegram-Bot-Api-Secret-Token","")
     if not expected or not hmac.compare_digest(expected,supplied): raise HTTPException(status_code=403,detail="Forbidden")
     update=await request.json()
+    # Telegram Business account connection: match the Telegram owner to the paired EC account.
+    business=update.get("business_connection")
+    if business:
+        owner_id=str((business.get("user") or {}).get("id",""))
+        with SessionLocal() as db:
+            linked=db.scalar(select(TelegramConnection).where(TelegramConnection.telegram_user_id==owner_id))
+            if linked:
+                cfg=db.scalar(select(TelegramBusinessConfig).where(TelegramBusinessConfig.user_id==linked.user_id))
+                if cfg is None:
+                    cfg=TelegramBusinessConfig(user_id=linked.user_id); db.add(cfg)
+                cfg.business_connection_id=business.get("id") if business.get("is_enabled") else None
+                if not business.get("is_enabled"): cfg.is_enabled=False
+                db.commit()
+        return {"ok":True}
+    # Auto-reply only to incoming Business chats, never to ordinary private bot chats.
+    message=update.get("business_message") or update.get("edited_business_message")
+    if message:
+        text_in=(message.get("text") or "").strip()
+        connection_id=message.get("business_connection_id")
+        chat_id=(message.get("chat") or {}).get("id")
+        sender_id=(message.get("from") or {}).get("id")
+        if text_in and connection_id and chat_id and sender_id:
+            with SessionLocal() as db:
+                cfg=db.scalar(select(TelegramBusinessConfig).where(TelegramBusinessConfig.business_connection_id==str(connection_id),TelegramBusinessConfig.is_enabled.is_(True)))
+                if cfg and str(sender_id)!=str((message.get("chat") or {}).get("id")):
+                    reply=cfg.reply_text
+                    lowered=text_in.casefold()
+                    for rule in cfg.keywords or []:
+                        key=str(rule.get("keyword","")).strip().casefold()
+                        if key and key in lowered:
+                            reply=str(rule.get("reply") or reply); break
+                    token=os.getenv("TELEGRAM_BOT_TOKEN","")
+                    payload=json.dumps({"business_connection_id":connection_id,"chat_id":chat_id,"text":reply[:4000]}).encode()
+                    req=urllib.request.Request("https://api.telegram.org/bot"+token+"/sendMessage",data=payload,headers={"Content-Type":"application/json"},method="POST")
+                    try:
+                        with urllib.request.urlopen(req,timeout=12) as response:
+                            if not json.loads(response.read().decode()).get("ok"): logging.warning("Telegram Business reply was rejected.")
+                    except Exception: logging.exception("Telegram Business reply failed.")
+        return {"ok":True}
     message=update.get("message") or update.get("edited_message") or {}
     chat=message.get("chat") or {}
     sender=message.get("from") or {}
@@ -245,7 +299,7 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
     parts=text_in.split()
     command=parts[0].split("@")[0]
     if command=="/start":
-        telegram_send(str(chat.get("id")),"Welcome to EC. Generate a private pairing code in EC, then send /connect YOUR_CODE here. Codes expire after 10 minutes.")
+        telegram_send(str(chat.get("id")),"Welcome to EC. Pair this bot in Plugins → Telegram, then send /connect YOUR_CODE. For Telegram Business, connect the bot in Telegram Settings → Telegram Business → Chatbots.")
     elif command=="/connect" and len(parts)==2 and re.fullmatch(r"\d{8}",parts[1]):
         digest=hashlib.sha256(parts[1].encode()).hexdigest()
         with SessionLocal() as db:
@@ -259,6 +313,30 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
                 db.delete(pair); db.commit()
                 telegram_send(str(chat.get("id")),"EC Telegram plugin connected successfully.")
     return {"ok":True}
+
+@app.get("/api/plugins/telegram/business")
+def get_telegram_business_config(user:User=Depends(current_user))->dict[str,Any]:
+    with SessionLocal() as db:
+        cfg=db.scalar(select(TelegramBusinessConfig).where(TelegramBusinessConfig.user_id==user.id))
+        return {"connected":bool(cfg and cfg.business_connection_id),"is_enabled":bool(cfg and cfg.is_enabled),"reply_text":cfg.reply_text if cfg else "Здравствуйте! Спасибо за сообщение. Мы скоро ответим.","keywords":cfg.keywords if cfg else []}
+
+@app.put("/api/plugins/telegram/business")
+def save_telegram_business_config(payload:TelegramBusinessConfigIn,user:User=Depends(current_user))->dict[str,Any]:
+    clean=[]
+    for item in payload.keywords:
+        keyword=str(item.get("keyword","")).strip()[:80]
+        reply=str(item.get("reply","")).strip()[:1000]
+        if keyword and reply: clean.append({"keyword":keyword,"reply":reply})
+    with SessionLocal() as db:
+        cfg=db.scalar(select(TelegramBusinessConfig).where(TelegramBusinessConfig.user_id==user.id))
+        if cfg is None:
+            cfg=TelegramBusinessConfig(user_id=user.id)
+            db.add(cfg)
+        cfg.is_enabled=payload.is_enabled
+        cfg.reply_text=payload.reply_text.strip()
+        cfg.keywords=clean[:20]
+        db.commit()
+        return {"saved":True,"is_enabled":cfg.is_enabled,"keywords":cfg.keywords}
 
 @app.get("/api/health")
 def health()->dict[str,str]: return {"status":"ok","service":"ec-api","version":"0.4.0"}
