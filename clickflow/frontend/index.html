@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f6f7fb">
-  <title>EC — Workflow studio</title>
+  <title>EC — Automation workspace</title>
+  <link rel="icon" type="image/svg+xml" href="/ec-logo.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
@@ -11,7 +12,7 @@
 <body>
 <div class="app">
   <aside class="sidebar">
-    <a class="brand" href="#"><span class="brand-icon"><i></i><i></i><i></i></span><span>EC</span></a>
+    <a class="brand" href="#" aria-label="EC home"><img class="brand-logo" src="/ec-logo.svg" alt=""><span>EC</span></a>
     <div class="workspace"><div class="workspace-avatar">R</div><div><b>Personal workspace</b><small>Free plan</small></div><span class="chevron">⌄</span></div>
     <div class="nav-caption">WORKSPACE</div>
     <nav>
@@ -22,7 +23,7 @@
     <div class="sidebar-bottom"><div class="status-line"><span class="online-dot"></span> All systems operational</div><div class="user-card"><div class="user-avatar">R</div><div><b>Rostislav</b><small>Workspace owner</small></div><span class="more">···</span></div></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div class="mobile-brand">EC</div><div class="crumb">Workspace <span>/</span> <b id="crumb">Overview</b></div><div class="top-right"><span class="top-status"><i></i> Prototype</span><div class="top-avatar">R</div></div></header>
+    <header class="topbar"><div class="mobile-brand"><img src="/ec-logo.svg" alt=""> EC</div><div class="crumb">Workspace <span>/</span> <b id="crumb">Overview</b></div><div class="top-right"><span class="top-status"><i></i> Prototype</span><div class="top-avatar">R</div></div></header>
     <section class="view active" id="view-home">
       <div class="hero page-enter"><div><div class="eyebrow"><span></span> WORKFLOW STUDIO</div><h1>Less repetition.<br><em>More momentum.</em></h1><p>Build simple workflows and keep everyday tasks moving.</p></div><button class="button primary" id="create-main"><span>＋</span> Create workflow</button></div>
       <div class="stats page-enter">
@@ -62,7 +63,7 @@
         <div class="modal-actions"><span class="safe-text"><i></i> Sandbox only</span><button class="button primary" id="save-workflow">Save workflow <span>→</span></button></div>
       </div>
       <div class="sample-wrap">
-        <div class="sample-toolbar"><div class="traffic"><i></i><i></i><i></i></div><span>sample.ec.app</span><small>DEMO</small></div>
+        <div class="sample-toolbar"><div class="traffic"><i></i><i></i><i></i></div><span>sandbox.ec.app</span><small>DEMO</small></div>
         <div class="sample-page">
           <div class="sample-brand"><span>N</span><b>Northstar</b><small>Sample workspace</small><div>JD</div></div>
           <div class="sample-intro"><small>YOUR TEST ENVIRONMENT</small><h3>Good morning, Jordan.</h3><p>Try the controls below. When recording is on, your actions appear in the step list.</p></div>
