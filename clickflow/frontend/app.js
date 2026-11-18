@@ -9,7 +9,7 @@ function showAuth(){document.body.classList.add("auth-required");$("#auth-screen
 function setAuthMode(mode){authMode=mode;$("#auth-title").textContent=mode==="login"?"Welcome back.":"Create your account.";$("#auth-subtitle").textContent=mode==="login"?"Sign in to continue to your automation workspace.":"Start your own private EC workspace.";$("#auth-submit").innerHTML=mode==="login"?'Sign in <span>→</span>':'Create account <span>→</span>';$("#auth-switch-text").textContent=mode==="login"?"New to EC?":"Already have an account?";$("#auth-switch").textContent=mode==="login"?"Create account":"Sign in";$("#auth-password").autocomplete=mode==="login"?"current-password":"new-password";$("#auth-error").textContent=""}
 async function submitAuth(e){e.preventDefault();const email=$("#auth-email").value.trim(),password=$("#auth-password").value,btn=$("#auth-submit");btn.disabled=true;$("#auth-error").textContent="";try{const user=await api("/auth/"+(authMode==="login"?"login":"register"),{method:"POST",body:JSON.stringify({email,password})});showWorkspace(user);await bootWorkspace();toast(authMode==="login"?"Welcome back.":"Your EC workspace is ready.")}catch(err){$("#auth-error").textContent=err.message}finally{btn.disabled=false}}
 async function signOut(){try{await api("/auth/logout",{method:"POST"})}catch{}currentUser=null;workflows=[];runs=[];showAuth();setAuthMode("login");$("#auth-password").value=""}
-function navigate(view){$$(".view").forEach(v=>v.classList.remove("active"));$("#view-"+view)?.classList.add("active");$$("[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));$("#crumb").textContent=({home:"Overview",workflows:"Workflows",history:"Run history",settings:"Settings",plans:"Plans",plugins:"Plugins"})[view]||"Overview";if(view==="workflows")loadWorkflows();if(view==="history")loadRuns(true);if(view==="settings")loadSettings();if(view==="plans")loadPlans();if(view==="plugins")loadPlugins();window.scrollTo({top:0,behavior:"smooth"});animateIn($("#view-"+view)?.children||[])}
+function navigate(view){$$(".view").forEach(v=>v.classList.remove("active"));$("#view-"+view)?.classList.add("active");$$("[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));$("#crumb").textContent=({home:"Overview",workflows:"Workflows",history:"Run history",settings:"Settings",plans:"Plans",plugins:"Plugins"})[view]||"Overview";if(view==="workflows"){loadWorkflows();loadBusinessConfig();loadChatActivity();}if(view==="history")loadRuns(true);if(view==="settings")loadSettings();if(view==="plans")loadPlans();if(view==="plugins")loadPlugins();window.scrollTo({top:0,behavior:"smooth"});animateIn($("#view-"+view)?.children||[])}
 function openBuilder(){const modal=$("#builder-modal");modal.classList.add("open");modal.setAttribute("aria-hidden","false");document.body.style.overflow="hidden";if(window.gsap)gsap.fromTo(".builder-modal",{y:22,opacity:0,scale:.985},{y:0,opacity:1,scale:1,duration:.32,ease:"power3.out"});$("#workflow-name").focus()}
 function closeBuilder(){const modal=$("#builder-modal");if(window.gsap)gsap.to(".builder-modal",{y:12,opacity:0,duration:.18,onComplete:()=>{modal.classList.remove("open");modal.setAttribute("aria-hidden","true");document.body.style.overflow=""}});else{modal.classList.remove("open");document.body.style.overflow=""}}
 function row(item,compact=false){const count=Array.isArray(item.steps)?item.steps.length:0;return '<div class="workflow-row"><div class="workflow-mark">'+esc((item.name||"W").trim().charAt(0).toUpperCase())+'</div><div class="workflow-info"><b>'+esc(item.name)+'</b><small>Manual trigger · '+count+' steps</small></div><span class="workflow-date">'+new Date(item.updated_at).toLocaleDateString()+'</span><button class="run-button" data-run="'+item.id+'">▶ Run</button>'+(compact?'':'<button class="delete-button" data-delete="'+item.id+'" title="Delete">×</button>')+'</div>'}
@@ -36,7 +36,7 @@ $("#password-form").addEventListener("submit",async e=>{e.preventDefault();const
 $("#refresh-sessions").addEventListener("click",loadSettings);
 document.addEventListener("click",async e=>{const revoke=e.target.closest("[data-revoke]");if(revoke){if(!confirm("Revoke this session?"))return;try{await api("/account/sessions/"+revoke.dataset.revoke,{method:"DELETE"});await loadSettings();toast("Session revoked.")}catch(err){toast(err.message)}}});
 
-async function loadPlugins(){try{const data=await api("/plugins");const tg=data.plugins.find(p=>p.id==="telegram");$("#plugin-count").textContent=data.plugins.length;const badge=$("#plugin-grid .plugin-status");badge.textContent=tg&&tg.status==="connected"?"Connected":"Available";badge.classList.toggle("connected",!!tg&&tg.status==="connected");await refreshTelegramConnection();await loadBusinessConfig()}catch(e){toast(e.message)}}
+async function loadPlugins(){try{const data=await api("/plugins");const tg=data.plugins.find(p=>p.id==="telegram");$("#plugin-count").textContent=data.plugins.length;const badge=$("#plugin-grid .plugin-status");badge.textContent=tg&&tg.status==="connected"?"Connected":"Available";badge.classList.toggle("connected",!!tg&&tg.status==="connected");await refreshTelegramConnection()}catch(e){toast(e.message)}}
 async function refreshTelegramConnection(){try{const data=await api("/plugins/telegram/connection");$("#telegram-state").textContent=data.connected?"Connected":"Not connected";$("#telegram-state").classList.toggle("connected",data.connected);$("#telegram-connected").hidden=!data.connected;$("#telegram-connected-name").textContent=data.username?"Connected as @"+data.username:"Your Telegram account is linked.";const badge=$("#plugin-grid .plugin-status");badge.textContent=data.connected?"Connected":"Available";badge.classList.toggle("connected",data.connected)}catch(e){$("#telegram-state").textContent=e.message}}
 async function generateTelegramCode(){const btn=$("#telegram-generate");btn.disabled=true;try{const data=await api("/plugins/telegram/pair",{method:"POST"});$("#pair-code").hidden=false;$("#pair-code").textContent=data.code;$("#pair-help").textContent="Expires in 10 minutes. Send /connect "+data.code+" to @"+data.bot_username+" in a private chat.";toast("One-time pairing code created.")}catch(e){toast(e.message)}finally{btn.disabled=false}}
 async function loadBusinessConfig(){
@@ -50,6 +50,11 @@ async function loadBusinessConfig(){
     $("#business-enabled").checked=!!data.is_enabled;
     renderBusinessRules(data.keywords||[]);
   }catch(e){$("#business-save-state").textContent=e.message}
+}
+async function loadChatActivity(){
+  const root=$("#chat-activity-list");if(!root)return;
+  try{const data=await api("/plugins/telegram/business/activity");const items=Array.isArray(data.items)?data.items:[];root.innerHTML=items.length?items.map(item=>'<article class="chat-event '+(item.direction==="out"?"out":"in")+'"><div><b>'+esc(item.direction==="out"?"EC reply":"Customer message")+'</b><small>'+esc(item.chat_title||"Telegram chat")+' · '+new Date(item.created_at).toLocaleString()+'</small></div><p>'+esc(item.text||"")+'</p></article>').join(""):'<div class="empty-state">No customer messages yet. New Telegram Business conversations will appear here.</div>'}
+  catch(e){root.textContent=e.message}
 }
 function renderBusinessRules(rules){
   const root=$("#business-rules");root.innerHTML="";
@@ -73,9 +78,31 @@ async function saveBusinessConfig(){
 async function disconnectTelegram(){if(!confirm("Disconnect the Telegram plugin from this EC account?"))return;try{await api("/plugins/telegram/connection",{method:"DELETE"});$("#pair-code").hidden=true;await loadPlugins();toast("Telegram disconnected.")}catch(e){toast(e.message)}}
 $("#telegram-open").addEventListener("click",()=>$("#telegram-detail").scrollIntoView({behavior:"smooth",block:"start"}));
 $("#telegram-generate").addEventListener("click",generateTelegramCode);
-$("#telegram-refresh").addEventListener("click",async()=>{await refreshTelegramConnection();await loadBusinessConfig()});
+$("#telegram-refresh").addEventListener("click",refreshTelegramConnection);
 $("#telegram-disconnect").addEventListener("click",disconnectTelegram);
 $("#business-add-rule").addEventListener("click",()=>{const rules=currentBusinessRules();rules.push({keyword:"",reply:""});renderBusinessRules(rules)});
 $("#business-save").addEventListener("click",saveBusinessConfig);
+$("#refresh-chat-activity").addEventListener("click",loadChatActivity);
 $("#plugin-search").addEventListener("input",e=>{$("#plugin-grid .plugin-card").style.display="telegram".includes(e.target.value.trim().toLowerCase())?"":"none"});
 $("#add-telegram-action").addEventListener("click",()=>{const text=$("#telegram-action-text").value.trim();if(!text)return toast("Write a Telegram message first.");steps.push({type:"telegram.send_message",label:"Send Telegram message",text,detail:text.slice(0,70)});renderSteps();$("#telegram-action-text").value="";toast("Telegram action added to workflow.")});
+
+function installButtonIcons(){
+ const iconFor=(button)=>{
+  const key=((button.id||"")+" "+button.textContent).toLowerCase();
+  if(/telegram|message|reply|chat/.test(key))return '<path d="m4 11 16-7-5 16-3-6-8-3Z"/><path d="m12 14 8-10"/>';
+  if(/save|update|create|new|add|workflow/.test(key))return '<path d="M5 4h12l3 3v13H4V4Z"/><path d="M8 4v6h8V4M8 20v-6h8v6"/>';
+  if(/refresh|reload/.test(key))return '<path d="M20 7v5h-5"/><path d="M19 12a7 7 0 1 1-2-5l3 5"/>';
+  if(/disconnect|sign out|delete|remove|clear/.test(key))return '<path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13"/>';
+  if(/close|cancel/.test(key))return '<path d="m6 6 12 12M18 6 6 18"/>';
+  if(/run|start|record/.test(key))return '<path d="m8 5 11 7-11 7V5Z"/>';
+  if(/view|open|configure|connect/.test(key))return '<path d="M5 12h14m-6-6 6 6-6 6"/>';
+  return '<path d="M12 5v14M5 12h14"/>';
+ };
+ $$("button").forEach(button=>{
+  if(button.dataset.iconReady||button.classList.contains("nav-link"))return;
+  button.dataset.iconReady="1";const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("viewBox","0 0 24 24");svg.setAttribute("aria-hidden","true");svg.classList.add("button-icon");
+  svg.innerHTML=iconFor(button);button.prepend(svg);
+ });
+}
+installButtonIcons();
