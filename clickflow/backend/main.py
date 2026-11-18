@@ -86,6 +86,16 @@ class TelegramConnection(Base):
     username:Mapped[str]=mapped_column(String(80),default="")
     connected_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc))
 
+class TelegramChatEvent(Base):
+    __tablename__="telegram_chat_events"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    user_id:Mapped[int]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),index=True,nullable=False)
+    direction:Mapped[str]=mapped_column(String(8),nullable=False)
+    chat_id:Mapped[str]=mapped_column(String(80),nullable=False)
+    chat_title:Mapped[str]=mapped_column(String(180),default="Telegram chat",nullable=False)
+    text:Mapped[str]=mapped_column(Text,nullable=False)
+    created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc),nullable=False)
+
 class TelegramBusinessConfig(Base):
     __tablename__="telegram_business_configs"
     id:Mapped[int]=mapped_column(Integer,primary_key=True)
@@ -278,6 +288,8 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
                 cfg=db.scalar(select(TelegramBusinessConfig).where(TelegramBusinessConfig.business_connection_id==str(connection_id),TelegramBusinessConfig.is_enabled.is_(True)))
                 owner=db.scalar(select(TelegramConnection).where(TelegramConnection.user_id==cfg.user_id)) if cfg else None
                 if cfg and owner and str(sender_id)!=str(owner.telegram_user_id):
+                    chat_title=str((message.get("chat") or {}).get("title") or (message.get("chat") or {}).get("username") or "Telegram customer")
+                    db.add(TelegramChatEvent(user_id=cfg.user_id,direction="in",chat_id=str(chat_id),chat_title=chat_title,text=text_in[:3500]))
                     reply=cfg.reply_text
                     lowered=text_in.casefold()
                     for rule in cfg.keywords or []:
@@ -289,7 +301,11 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
                     req=urllib.request.Request("https://api.telegram.org/bot"+token+"/sendMessage",data=payload,headers={"Content-Type":"application/json"},method="POST")
                     try:
                         with urllib.request.urlopen(req,timeout=12) as response:
-                            if not json.loads(response.read().decode()).get("ok"): logging.warning("Telegram Business reply was rejected.")
+                            if json.loads(response.read().decode()).get("ok"):
+                                db.add(TelegramChatEvent(user_id=cfg.user_id,direction="out",chat_id=str(chat_id),chat_title=chat_title,text=reply[:3500]))
+                                db.commit()
+                            else:
+                                logging.warning("Telegram Business reply was rejected.")
                     except Exception: logging.exception("Telegram Business reply failed.")
         return {"ok":True}
     message=update.get("message") or update.get("edited_message") or {}
@@ -338,6 +354,12 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
                 else:
                     telegram_send(str(chat.get("id")),("Auto-replies: ON" if cfg.is_enabled else "Auto-replies: OFF")+"\\nDefault reply: "+cfg.reply_text[:700]+"\\nCommands: /business_on, /business_off, /setreply TEXT")
     return {"ok":True}
+
+@app.get("/api/plugins/telegram/business/activity")
+def telegram_business_activity(user:User=Depends(current_user))->dict[str,Any]:
+    with SessionLocal() as db:
+        events=db.scalars(select(TelegramChatEvent).where(TelegramChatEvent.user_id==user.id).order_by(TelegramChatEvent.created_at.desc()).limit(60)).all()
+        return {"items":[{"direction":e.direction,"chat_title":e.chat_title,"text":e.text,"created_at":e.created_at} for e in events]}
 
 @app.get("/api/plugins/telegram/business")
 def get_telegram_business_config(user:User=Depends(current_user))->dict[str,Any]:
