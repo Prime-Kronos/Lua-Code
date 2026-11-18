@@ -288,7 +288,9 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
                 cfg=db.scalar(select(TelegramBusinessConfig).where(TelegramBusinessConfig.business_connection_id==str(connection_id),TelegramBusinessConfig.is_enabled.is_(True)))
                 owner=db.scalar(select(TelegramConnection).where(TelegramConnection.user_id==cfg.user_id)) if cfg else None
                 if cfg and owner and str(sender_id)!=str(owner.telegram_user_id):
-                    chat_title=str((message.get("chat") or {}).get("title") or (message.get("chat") or {}).get("username") or "Telegram customer")
+                    sender_info=message.get("from") or {}
+                    sender_name=(" ".join(x for x in [sender_info.get("first_name"),sender_info.get("last_name")] if x) or ("@"+sender_info["username"] if sender_info.get("username") else "Telegram customer"))
+                    chat_title=str((message.get("chat") or {}).get("title") or (message.get("chat") or {}).get("username") or sender_name)
                     db.add(TelegramChatEvent(user_id=cfg.user_id,direction="in",chat_id=str(chat_id),chat_title=chat_title,text=text_in[:3500]))
                     reply=cfg.reply_text
                     lowered=text_in.casefold()
