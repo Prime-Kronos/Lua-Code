@@ -73,6 +73,22 @@
       <div class="telegram-step"><span class="step-number">02</span><h3>Generate a pairing code</h3><p>EC creates a one-time code that expires after 10 minutes.</p><button class="button primary" id="telegram-generate">Generate secure code</button><div class="pair-code" id="pair-code" hidden></div><p class="pair-help" id="pair-help">The code is visible only in this signed-in workspace.</p></div>
       <div class="telegram-step"><span class="step-number">03</span><h3>Confirm in Telegram</h3><p>Send <code>/connect YOUR_CODE</code> in the bot's private chat. Return here to refresh status.</p><button class="quiet-button" id="telegram-refresh">Refresh connection</button></div></div>
       <div class="plugin-connected" id="telegram-connected" hidden><span>✓</span><div><b>Telegram is connected</b><small id="telegram-connected-name"></small></div><button class="quiet-button danger" id="telegram-disconnect">Disconnect</button></div>
+      <section class="business-config surface" id="telegram-business-config">
+        <div class="business-config-head"><div><div class="eyebrow">CHAT AUTOMATION</div><h2>Telegram Business auto-reply</h2><p>Connect your Telegram Business account to the bot. After Telegram confirms the connection, this panel becomes active.</p></div><span class="plugin-status" id="business-link-state">Waiting for connection</span></div>
+        <div class="business-guide">
+          <div class="business-guide-step"><b>01 · Pair EC</b><p>First complete the private bot pairing above so EC can identify your Telegram account.</p></div>
+          <div class="business-guide-step"><b>02 · Enable Business</b><p>In Telegram: Settings → Telegram Business → Chatbots → Add chatbot. Select <b>@ECBussines_bot</b> and allow it to reply to messages.</p><a href="https://telegram.org/blog/telegram-business" target="_blank" rel="noopener">About Telegram Business ↗</a></div>
+          <div class="business-guide-step"><b>03 · Configure replies</b><p>When Telegram sends the connection update, EC will show Connected here. Then save and enable your reply rules.</p></div>
+        </div>
+        <div class="business-editor" id="business-editor">
+          <label for="business-reply">Default auto-reply</label><textarea id="business-reply" rows="3" maxlength="3500">Здравствуйте! Спасибо за сообщение. Мы скоро ответим.</textarea>
+          <div class="business-editor-row"><div><b>Keyword replies</b><small>Optional: if an incoming message contains a keyword, send its matching reply.</small></div><button class="quiet-button" id="business-add-rule" type="button">＋ Add rule</button></div>
+          <div id="business-rules" class="business-rules"></div>
+          <label class="business-toggle"><input type="checkbox" id="business-enabled"><span><b>Enable automatic replies</b><small>Replies are sent only to incoming Telegram Business messages.</small></span></label>
+          <div class="business-editor-actions"><span id="business-save-state">Not saved yet</span><button class="button primary" id="business-save" type="button">Save configuration</button></div>
+        </div>
+        <div class="business-waiting" id="business-waiting">Waiting for your Telegram Business account to be connected…</div>
+      </section>
       <div class="plugin-note"><b>Security note</b><p>Pairing codes are one-use, expire in 10 minutes and are stored as hashes. The bot token belongs in Render environment variables, never in frontend code or chat. EC uses the official Bot API, not a personal-account Userbot.</p></div></section>
     </section>
         <section class="view" id="view-plans"><div class="page-title"><div><div class="eyebrow">SIMPLE, TRANSPARENT</div><h1>Plans</h1><p>Choose the workspace capacity that fits your work.</p></div></div><div class="plans-grid">
