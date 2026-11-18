@@ -1,111 +1,82 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0b1020">
-  <title>ClickFlow — Make repetitive work disappear</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f6f7fb">
+  <title>ClickFlow — Workflow studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="#">
-        <span class="brand-mark"><span></span><span></span><span></span></span>
-        <span>click<span class="brand-light">flow</span><small>WORKFLOW STUDIO</small></span>
-      </a>
-      <div class="workspace-switch">
-        <div class="workspace-avatar">R</div>
-        <div><strong>Rostislav's space</strong><small>Personal workspace</small></div>
-        <span class="chevron">⌄</span>
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="#"><span class="brand-icon"><i></i><i></i><i></i></span><span>clickflow</span></a>
+    <div class="workspace"><div class="workspace-avatar">R</div><div><b>Personal workspace</b><small>Free plan</small></div><span class="chevron">⌄</span></div>
+    <div class="nav-caption">WORKSPACE</div>
+    <nav>
+      <button class="nav-link active" data-view="home"><span class="nav-symbol">▦</span>Overview</button>
+      <button class="nav-link" data-view="workflows"><span class="nav-symbol">⌘</span>Workflows<span class="nav-badge" id="nav-count">0</span></button>
+      <button class="nav-link" data-view="history"><span class="nav-symbol">◷</span>Run history</button>
+    </nav>
+    <div class="sidebar-bottom"><div class="status-line"><span class="online-dot"></span> All systems operational</div><div class="user-card"><div class="user-avatar">R</div><div><b>Rostislav</b><small>Workspace owner</small></div><span class="more">···</span></div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div class="mobile-brand">clickflow</div><div class="crumb">Workspace <span>/</span> <b id="crumb">Overview</b></div><div class="top-right"><span class="top-status"><i></i> Prototype</span><div class="top-avatar">R</div></div></header>
+    <section class="view active" id="view-home">
+      <div class="hero page-enter"><div><div class="eyebrow"><span></span> WORKFLOW STUDIO</div><h1>Less repetition.<br><em>More momentum.</em></h1><p>Build simple workflows and keep everyday tasks moving.</p></div><button class="button primary" id="create-main"><span>＋</span> Create workflow</button></div>
+      <div class="stats page-enter">
+        <article class="stat"><div class="stat-label">Total workflows <span class="stat-icon violet">⌘</span></div><strong id="stat-workflows">—</strong><small>Your saved automations</small></article>
+        <article class="stat"><div class="stat-label">Successful runs <span class="stat-icon mint">✓</span></div><strong id="stat-runs">—</strong><small>Demo executions</small></article>
+        <article class="stat"><div class="stat-label">Success rate <span class="stat-icon blue">↗</span></div><strong id="stat-rate">—</strong><small>Across recorded runs</small></article>
       </div>
-      <div class="nav-label">WORKSPACE</div>
-      <nav class="main-nav">
-        <button class="nav-item active" data-view="overview"><span class="nav-icon">◫</span> Overview</button>
-        <button class="nav-item" data-view="workflows"><span class="nav-icon">⌘</span> My workflows <span class="nav-count" id="workflow-count">0</span></button>
-        <button class="nav-item" data-view="builder"><span class="nav-icon">✳</span> Builder <span class="nav-new">NEW</span></button>
-        <button class="nav-item" data-view="runs"><span class="nav-icon">◷</span> Run history</button>
-      </nav>
-      <div class="nav-label tools-label">TOOLS</div>
-      <div class="tool-card">
-        <div class="tool-icon">◎</div>
-        <div><strong>Browser recorder</strong><small>Capture actions visually</small></div>
-        <span class="tool-dot"></span>
+      <div class="section-head page-enter"><div><h2>Your workflows</h2><p>Everything you have saved, in one place.</p></div><button class="quiet-button" data-view="workflows">View all <span>↗</span></button></div>
+      <div class="dashboard-grid page-enter">
+        <section class="surface workflow-surface"><div class="surface-head"><div><h3>Recent workflows</h3><p>Pick up where you left off</p></div><span class="count-pill" id="workflow-total">0 items</span></div><div id="recent-list" class="workflow-list"><div class="loading">Loading workflows…</div></div></section>
+        <aside class="surface quick-card"><div class="quick-orb">✳</div><div class="eyebrow">GET STARTED</div><h3>Make your first<br>workflow.</h3><p>Record a few actions on our sample page, save them, then try a demo run.</p><button class="button dark" id="create-side">Open builder <span>→</span></button><div class="orb-ring"></div></aside>
       </div>
-      <div class="sidebar-bottom">
-        <div class="help-card"><span class="help-symbol">?</span><div><strong>Need a hand?</strong><small>Explore the quick guide</small></div><span>↗</span></div>
-        <div class="profile-row"><div class="profile-avatar">R</div><div><strong>Rostislav</strong><small>Free plan · Prototype</small></div><button class="more-btn">•••</button></div>
+      <div class="notice page-enter"><span>i</span><p><b>Safe prototype environment.</b> Recording is limited to the built-in sample page. Runs are simulated and never control external websites.</p></div>
+    </section>
+    <section class="view" id="view-workflows">
+      <div class="page-title"><div><div class="eyebrow">YOUR LIBRARY</div><h1>Workflows</h1><p>Manage the small things you no longer want to repeat.</p></div><button class="button primary" id="create-list">＋ New workflow</button></div>
+      <section class="surface"><div class="surface-head"><div><h3>All workflows</h3><p>Your saved automations</p></div><span class="count-pill" id="all-total">0 items</span></div><div id="all-list" class="workflow-list"><div class="loading">Loading…</div></div></section>
+    </section>
+    <section class="view" id="view-history">
+      <div class="page-title"><div><div class="eyebrow">ACTIVITY</div><h1>Run history</h1><p>A simple record of your recent demo executions.</p></div></div>
+      <section class="surface"><div class="surface-head"><div><h3>Recent activity</h3><p>Latest workflow runs</p></div><span class="count-pill">Latest 30</span></div><div id="history-list" class="history-list"><div class="loading">Loading…</div></div></section>
+      <div class="notice"><span>i</span><p>Prototype runs are simulated. No external accounts or websites are accessed.</p></div>
+    </section>
+    <footer><span>© 2026 ClickFlow</span><span>Make work flow.</span></footer>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="builder-modal" aria-hidden="true">
+  <section class="builder-modal" role="dialog" aria-modal="true" aria-labelledby="builder-title">
+    <header class="modal-head"><div><div class="eyebrow">WORKFLOW BUILDER</div><h2 id="builder-title">Create workflow</h2></div><button class="close-modal" id="close-modal" aria-label="Close">×</button></header>
+    <div class="builder-body">
+      <div class="builder-form">
+        <label for="workflow-name">Workflow name</label><input id="workflow-name" maxlength="140" value="My first workflow" placeholder="e.g. Check daily reports">
+        <label for="workflow-description">Description <small>OPTIONAL</small></label><textarea id="workflow-description" rows="2" placeholder="What does this workflow do?"></textarea>
+        <div class="steps-head"><div><b>Recorded steps</b><small id="step-count">0 steps</small></div><button class="text-action" id="clear-steps">Clear</button></div>
+        <div class="recorded-steps" id="recorded-steps"><div class="empty-steps"><span>⌁</span><b>No steps recorded</b><small>Start recording, then use the sample page.</small></div></div>
+        <div class="modal-actions"><span class="safe-text"><i></i> Sandbox only</span><button class="button primary" id="save-workflow">Save workflow <span>→</span></button></div>
       </div>
-    </aside>
-
-    <main class="main-area">
-      <header class="topbar">
-        <div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="crumb-current">Overview</strong></div>
-        <div class="top-actions"><span class="system-status"><i></i> All systems operational</span><button class="icon-btn" aria-label="Notifications">♧</button><div class="top-avatar">R</div></div>
-      </header>
-
-      <section class="view active-view" id="view-overview">
-        <div class="welcome-row">
-          <div><div class="eyebrow"><span class="eyebrow-dot"></span> YOUR AUTOMATION WORKSPACE</div><h1>Make busywork <span>disappear.</span></h1><p class="subheading">Build simple workflows. Let ClickFlow handle the repeatable stuff.</p></div>
-          <button class="primary-btn" id="new-workflow-top"><span>＋</span> New workflow</button>
+      <div class="sample-wrap">
+        <div class="sample-toolbar"><div class="traffic"><i></i><i></i><i></i></div><span>sample.clickflow.app</span><small>DEMO</small></div>
+        <div class="sample-page">
+          <div class="sample-brand"><span>N</span><b>Northstar</b><small>Sample workspace</small><div>JD</div></div>
+          <div class="sample-intro"><small>YOUR TEST ENVIRONMENT</small><h3>Good morning, Jordan.</h3><p>Try the controls below. When recording is on, your actions appear in the step list.</p></div>
+          <div class="sample-stats"><div><small>Open tasks</small><b>12</b><i>↑ 2 this week</i></div><div><small>Reports ready</small><b>04</b><i>All up to date</i></div></div>
+          <div class="sample-card"><div><b>Workspace status</b><small>Check your sample workspace.</small></div><button id="demo-status">Check status</button></div>
+          <div class="sample-card note-card"><label for="demo-note">Add a test note</label><div><input id="demo-note" placeholder="Type a note…"><button id="demo-add-note">Add note</button></div><small id="demo-feedback">Nothing leaves this demo page.</small></div>
+          <div class="sample-foot">Northstar demo <span>● Private sandbox</span></div>
         </div>
-        <div class="stats-grid">
-          <article class="stat-card"><div class="stat-top"><span>Saved workflows</span><span class="stat-icon purple">⌘</span></div><div class="stat-value" id="stat-workflows">—</div><div class="stat-foot"><span class="muted">Ready when you are</span></div></article>
-          <article class="stat-card"><div class="stat-top"><span>Successful runs</span><span class="stat-icon green">✓</span></div><div class="stat-value" id="stat-runs">—</div><div class="stat-foot"><span class="positive">Prototype activity</span></div></article>
-          <article class="stat-card"><div class="stat-top"><span>Time saved</span><span class="stat-icon blue">◷</span></div><div class="stat-value">2.4<span class="stat-unit">h</span></div><div class="stat-foot"><span class="muted">Estimated demo value</span></div></article>
-          <article class="stat-card"><div class="stat-top"><span>Success rate</span><span class="stat-icon orange">↗</span></div><div class="stat-value" id="stat-success">—</div><div class="stat-foot"><span class="muted">Based on demo runs</span></div></article>
-        </div>
-        <div class="section-heading"><div><h2>Pick up where you left off</h2><p>Your workflows, all in one place.</p></div><button class="text-btn" data-goto="workflows">View all workflows <span>→</span></button></div>
-        <div class="content-grid">
-          <div class="panel workflow-panel"><div class="panel-head"><div><h3>Recent workflows</h3><p>Quick access to your automations</p></div><span class="live-pill"><i></i> LIVE</span></div><div id="recent-workflows" class="workflow-list"><div class="loading-state">Loading your workspace…</div></div></div>
-          <div class="panel getting-started"><div class="sparkle">✳</div><div class="mini-label">QUICK START</div><h3>Your next workflow<br>is one click away.</h3><p>Record a few actions on the demo page, save them as a workflow, and run a safe test.</p><button class="secondary-btn" data-goto="builder">Open workflow builder <span>→</span></button><div class="decor-lines"></div></div>
-        </div>
-        <div class="bottom-note"><span class="note-icon">i</span><span><strong>Prototype mode:</strong> recording is limited to the built-in demo page. Runs are simulated and won't interact with external websites.</span></div>
-      </section>
-
-      <section class="view" id="view-workflows">
-        <div class="page-heading"><div><div class="eyebrow">YOUR AUTOMATIONS</div><h1>My workflows</h1><p class="subheading">A clear view of everything you've built.</p></div><button class="primary-btn" data-goto="builder">＋ Create workflow</button></div>
-        <div class="panel"><div class="panel-head"><div><h3>All workflows</h3><p id="workflow-subtitle">Manage and run your saved workflows.</p></div><span class="table-count" id="all-count">0 workflows</span></div><div id="all-workflows" class="workflow-list"><div class="loading-state">Loading…</div></div></div>
-      </section>
-
-      <section class="view" id="view-builder">
-        <div class="page-heading"><div><div class="eyebrow">WORKFLOW STUDIO</div><h1>Build something useful.</h1><p class="subheading">Record interactions on the sample page, then save your workflow.</p></div><span class="draft-badge"><i></i> UNSAVED DRAFT</span></div>
-        <div class="builder-grid">
-          <div class="panel builder-panel">
-            <div class="panel-head"><div><h3>Workflow details</h3><p>Give your automation a name.</p></div><span class="step-counter" id="step-counter">0 steps</span></div>
-            <label class="field-label" for="workflow-name">Workflow name</label><input id="workflow-name" class="text-input" maxlength="140" value="My first workflow" placeholder="e.g. Check daily reports">
-            <label class="field-label" for="workflow-description">Description <span>OPTIONAL</span></label><textarea id="workflow-description" class="text-input textarea" rows="2" placeholder="What should this workflow do?"></textarea>
-            <div class="recording-head"><div><h3>Recorded steps</h3><p>Actions captured from the demo browser.</p></div><button class="ghost-btn" id="clear-steps">Clear all</button></div>
-            <div id="recorded-steps" class="recorded-steps"><div class="empty-steps"><div class="empty-steps-icon">⌁</div><strong>No steps yet</strong><span>Start recording and interact with the demo page.</span></div></div>
-            <div class="builder-footer"><span class="safe-label"><i></i> Safe demo recorder</span><button class="primary-btn" id="save-workflow">Save workflow <span>→</span></button></div>
-          </div>
-          <div class="panel browser-panel">
-            <div class="browser-top"><div class="browser-dots"><i></i><i></i><i></i></div><div class="browser-address"><span>♧</span> demo.clickflow.local</div><span class="browser-label">DEMO PAGE</span></div>
-            <div class="browser-content">
-              <div class="demo-brand"><span class="demo-logo">N</span><div><strong>Northstar</strong><small>Sample workspace</small></div><span class="demo-user">JD</span></div>
-              <div class="demo-welcome"><div class="demo-tag">YOUR TEST ENVIRONMENT</div><h3>Good morning, Jordan.</h3><p>This is a safe sandbox. Try clicking buttons or typing in the fields below — your actions will appear in the recorder.</p></div>
-              <div class="demo-metric-row"><div class="demo-metric"><small>Open tasks</small><strong>12</strong><span>↑ 2 this week</span></div><div class="demo-metric"><small>Reports ready</small><strong>04</strong><span>All up to date</span></div></div>
-              <div class="demo-action-card"><div><strong>Workspace status</strong><small>Check if everything is running smoothly.</small></div><button id="demo-status" class="demo-action">Check status</button></div>
-              <div class="demo-input-card"><label for="demo-note">Add a test note</label><div class="demo-input-row"><input id="demo-note" placeholder="Type something here…"><button id="demo-add-note">Add note</button></div><small id="demo-feedback">This won't be sent anywhere.</small></div>
-              <div class="demo-bottom"><span>Northstar demo environment</span><span>Privacy-safe sandbox <i></i></span></div>
-            </div>
-            <div class="recorder-bar"><div><span class="recorder-pulse" id="recorder-pulse"></span><div><strong id="recorder-state">Recorder is idle</strong><small id="recorder-hint">Start recording to capture demo actions</small></div></div><button id="record-toggle" class="record-btn">● Start recording</button></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="view" id="view-runs">
-        <div class="page-heading"><div><div class="eyebrow">ACTIVITY LOG</div><h1>Run history</h1><p class="subheading">See what ran and when.</p></div><span class="history-chip">Last 30 runs</span></div>
-        <div class="panel"><div class="panel-head"><div><h3>Recent activity</h3><p>Execution records from your workspace.</p></div></div><div id="runs-list" class="runs-list"><div class="loading-state">Loading history…</div></div></div>
-        <div class="bottom-note"><span class="note-icon">i</span><span>Runs in this prototype are simulated. No third-party site is controlled and no external account is accessed.</span></div>
-      </section>
-      <footer class="footer"><span>© 2026 ClickFlow Studio</span><span>Built for the work you shouldn't have to repeat.</span><span class="version">PREVIEW 0.1.0</span></footer>
-    </main>
-  </div>
-  <div class="toast" id="toast"></div>
-  <script src="/app.js"></script>
-</body>
-</html>
+        <div class="recorder-footer"><div><span class="record-indicator" id="record-indicator"></span><div><b id="record-state">Recorder is idle</b><small id="record-hint">Ready to capture sample actions</small></div></div><button class="record-button" id="record-toggle">● Start recording</button></div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="/app.js"></script>
+</body></html>
