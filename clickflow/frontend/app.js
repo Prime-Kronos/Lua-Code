@@ -73,7 +73,7 @@ async function saveBusinessConfig(){
 async function disconnectTelegram(){if(!confirm("Disconnect the Telegram plugin from this EC account?"))return;try{await api("/plugins/telegram/connection",{method:"DELETE"});$("#pair-code").hidden=true;await loadPlugins();toast("Telegram disconnected.")}catch(e){toast(e.message)}}
 $("#telegram-open").addEventListener("click",()=>$("#telegram-detail").scrollIntoView({behavior:"smooth",block:"start"}));
 $("#telegram-generate").addEventListener("click",generateTelegramCode);
-$("#telegram-refresh").addEventListener("click",refreshTelegramConnection);
+$("#telegram-refresh").addEventListener("click",async()=>{await refreshTelegramConnection();await loadBusinessConfig()});
 $("#telegram-disconnect").addEventListener("click",disconnectTelegram);
 $("#business-add-rule").addEventListener("click",()=>{const rules=currentBusinessRules();rules.push({keyword:"",reply:""});renderBusinessRules(rules)});
 $("#business-save").addEventListener("click",saveBusinessConfig);
