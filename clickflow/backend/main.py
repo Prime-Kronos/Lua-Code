@@ -312,7 +312,31 @@ async def telegram_webhook(request:Request)->dict[str,bool]:
                 db.execute(delete(TelegramConnection).where(TelegramConnection.user_id==pair.user_id))
                 db.add(TelegramConnection(user_id=pair.user_id,chat_id=str(chat.get("id")),telegram_user_id=str(sender.get("id")),username=sender.get("username") or sender.get("first_name") or "Telegram user"))
                 db.delete(pair); db.commit()
-                telegram_send(str(chat.get("id")),"EC Telegram plugin connected successfully.")
+                telegram_send(str(chat.get("id")),"EC Telegram plugin connected successfully. Commands: /business_on, /business_off, /setreply YOUR_TEXT, /status.")
+    elif command in {"/business_on","/business_off","/status"} or command=="/setreply":
+        with SessionLocal() as db:
+            linked=db.scalar(select(TelegramConnection).where(TelegramConnection.chat_id==str(chat.get("id")),TelegramConnection.telegram_user_id==str(sender.get("id"))))
+            if not linked:
+                telegram_send(str(chat.get("id")),"This Telegram chat is not paired with an EC workspace. Connect it from EC → Plugins → Telegram.")
+            else:
+                cfg=db.scalar(select(TelegramBusinessConfig).where(TelegramBusinessConfig.user_id==linked.user_id))
+                if cfg is None:
+                    cfg=TelegramBusinessConfig(user_id=linked.user_id); db.add(cfg); db.flush()
+                if command=="/business_on":
+                    cfg.is_enabled=True; db.commit()
+                    telegram_send(str(chat.get("id")),"Auto-replies enabled. Make sure the Telegram Business account is connected in Telegram Settings → Telegram Business → Chatbots.")
+                elif command=="/business_off":
+                    cfg.is_enabled=False; db.commit()
+                    telegram_send(str(chat.get("id")),"Auto-replies paused.")
+                elif command=="/setreply":
+                    new_reply=text_in.partition(" ")[2].strip()
+                    if not new_reply:
+                        telegram_send(str(chat.get("id")),"Usage: /setreply Your new automatic reply")
+                    else:
+                        cfg.reply_text=new_reply[:3500]; db.commit()
+                        telegram_send(str(chat.get("id")),"Default auto-reply text updated.")
+                else:
+                    telegram_send(str(chat.get("id")),("Auto-replies: ON" if cfg.is_enabled else "Auto-replies: OFF")+"\\nDefault reply: "+cfg.reply_text[:700]+"\\nCommands: /business_on, /business_off, /setreply TEXT")
     return {"ok":True}
 
 @app.get("/api/plugins/telegram/business")
