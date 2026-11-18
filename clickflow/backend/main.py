@@ -251,7 +251,7 @@ def update_workflow(workflow_id:int,payload:WorkflowCreate,user:User=Depends(cur
 def delete_workflow(workflow_id:int,user:User=Depends(current_user))->dict[str,bool]:
     with SessionLocal() as db:
         item=owned_workflow(db,workflow_id,user.id)
-        db.execute(delete(RunOwner).where(RunOwner.workflow_id==workflow_id))
+        db.execute(delete(RunOwner).where(RunOwner.run_id.in_(select(Run.id).where(Run.workflow_id==workflow_id))))
         db.execute(delete(Run).where(Run.workflow_id==workflow_id))
         db.delete(item); db.commit(); return {"deleted":True}
 @app.get("/api/runs",response_model=list[RunOut])
