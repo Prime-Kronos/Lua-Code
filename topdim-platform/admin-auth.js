@@ -72,7 +72,7 @@ function createAdminAuth(pool) {
       if (!["GET","HEAD","OPTIONS"].includes(req.method) && !safeEqual(req.get("x-csrf-token"), row.csrf_token)) {
         return res.status(403).json({ error: "Проверка запроса не пройдена." });
       }
-      req.admin = { id: row.id, email: row.email, role: row.role, sessionId: row.session_id };
+      req.admin = { id: row.id, email: row.email, role: row.role, sessionId: row.session_id, csrfToken: row.csrf_token };
       next();
     } catch (error) {
       console.error("admin_auth_failed", req.requestId, error.message);
