@@ -5,6 +5,7 @@ const multer = require("multer");
 const sharp = require("sharp");
 const { z } = require("zod");
 const { Pool } = require("pg");
+const { createAdminAuth } = require("./admin-auth");
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -23,6 +24,7 @@ const pool = process.env.DATABASE_URL
       query_timeout: 10000
     })
   : null;
+const adminAuth = pool ? createAdminAuth(pool) : null;
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -110,15 +112,8 @@ function limit(action, max, windowSeconds) {
     }
   };
 }
-function requireAdmin(req, res, next) {
-  const expected = process.env.ADMIN_TOKEN || "";
-  const provided = (req.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!pool || expected.length < 32) return res.status(503).json({ error: "Доступ модератора не настроен." });
-  const a = Buffer.from(expected);
-  const b = Buffer.from(provided);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: "Нет доступа." });
-  next();
-}
+const requireAdmin = (req, res, next) => adminAuth ? adminAuth.requireAdmin(req, res, next) : res.status(503).json({ error: "Авторизация не настроена." });
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 8, parts: 10 },
@@ -151,7 +146,7 @@ app.get("/api/health", async (_req, res) => {
     app: "Topdim",
     database,
     writesEnabled: database === "connected",
-    moderationConfigured: Boolean(process.env.ADMIN_TOKEN && process.env.ADMIN_TOKEN.length >= 32)
+    moderationConfigured: Boolean(pool && adminAuth)
   });
 });
 app.get("/api/listings", limit("public_list", 120, 60), async (req, res) => {
@@ -221,6 +216,16 @@ app.post("/api/listings", limit("create_listing", 5, 3600), upload.single("photo
     res.status(503).json({ error: "Не удалось сохранить объявление. Попробуйте позже.", requestId: req.requestId });
   }
 });
+app.post("/api/admin/login", limit("admin_login", 8, 900), async (req, res) => {
+  if (!adminAuth) return res.status(503).json({ error: "Авторизация не настроена." });
+  try { await adminAuth.login(req, res); }
+  catch (error) { console.error("admin_login_failed", req.requestId, error.message); res.status(503).json({ error: "Не удалось выполнить вход." }); }
+});
+app.get("/api/admin/me", requireAdmin, (req, res) => { res.setHeader("Cache-Control", "no-store"); res.json({ admin: req.admin }); });
+app.post("/api/admin/logout", requireAdmin, async (req, res) => {
+  try { await adminAuth.logout(req, res); }
+  catch (error) { console.error("admin_logout_failed", req.requestId, error.message); res.status(503).json({ error: "Не удалось завершить сессию." }); }
+});
 app.get("/api/admin/submissions", requireAdmin, limit("admin_list", 30, 60), async (req, res) => {
   try {
     const result = await pool.query("SELECT id,title,category,kind,area,item_date::text AS date,description,status,created_at FROM topdim_submissions WHERE status='pending' ORDER BY created_at ASC LIMIT 100");
@@ -282,7 +287,7 @@ app.use((error, req, res, _next) => {
 });
 async function start() {
   if (pool) {
-    try { await initDb(); console.log("Topdim database ready"); }
+    try { await initDb(); await adminAuth.bootstrap(); console.log("Topdim database ready"); }
     catch (error) { console.error("Database unavailable; write API remains closed:", error.message); }
   }
   const server = app.listen(PORT, "0.0.0.0", () => console.log("Topdim API listening on " + PORT));
