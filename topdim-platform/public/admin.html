@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="same-origin">
+<title>Topdim — панель модерации</title>
+<style>
+:root{color-scheme:light;--ink:#172033;--muted:#68758b;--line:#e7ebf2;--blue:#315efb;--bg:#f5f7fb}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:#fff;border-bottom:1px solid var(--line);padding:18px max(20px,calc((100vw - 1080px)/2));display:flex;justify-content:space-between;align-items:center}
+.brand{font-size:21px;font-weight:800;letter-spacing:-.6px}.brand span{color:var(--blue)}main{max-width:1080px;margin:42px auto;padding:0 20px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:20px;padding:26px;box-shadow:0 12px 35px #1720330a}
+h1{font-size:27px;letter-spacing:-.8px;margin:0 0 8px}.sub{color:var(--muted);margin:0 0 24px}
+label{display:block;font-weight:650;margin:14px 0 7px}input{width:100%;padding:13px 14px;border:1px solid #dce2ed;border-radius:11px;font:inherit;outline:none}input:focus{border-color:var(--blue);box-shadow:0 0 0 3px #315efb18}
+button{border:0;border-radius:11px;padding:11px 16px;font:inherit;font-weight:700;cursor:pointer;background:var(--blue);color:white}button.secondary{background:#eef2ff;color:#294bd1}button.danger{background:#fff0f0;color:#b42318}button:disabled{opacity:.5;cursor:wait}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.hidden{display:none!important}.notice{margin-top:14px;color:var(--muted);min-height:24px}.error{color:#b42318}.items{display:grid;gap:14px;margin-top:20px}.item{border:1px solid var(--line);border-radius:15px;padding:16px;display:grid;grid-template-columns:130px 1fr;gap:16px}.item img{width:130px;height:130px;object-fit:cover;border-radius:12px;background:#f0f2f6}.meta{color:var(--muted);font-size:13px}.desc{margin:8px 0 14px;overflow-wrap:anywhere}.actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:600px){main{margin:22px auto}.panel{padding:19px}.item{grid-template-columns:1fr}.item img{width:100%;height:190px}}
+</style></head>
+<body>
+<header><div class="brand">top<span>dim</span> <small style="font-size:12px;color:#778197;font-weight:600">ADMIN</small></div><button id="logout" class="secondary hidden">Выйти</button></header>
+<main>
+<section id="login" class="panel" style="max-width:460px;margin:7vh auto">
+<h1>Вход модератора</h1><p class="sub">Доступ только для уполномоченного администратора Topdim.</p>
+<form id="loginForm"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required maxlength="254"><label for="password">Пароль</label><input id="password" type="password" autocomplete="current-password" required maxlength="256"><div class="row" style="margin-top:20px"><button id="loginBtn">Войти</button></div></form><div id="loginMsg" class="notice" role="status"></div>
+</section>
+<section id="dashboard" class="hidden">
+<div class="panel"><div class="row" style="justify-content:space-between"><div><h1>Очередь модерации</h1><p class="sub" style="margin:5px 0 0">Проверяйте объявления перед публикацией.</p></div><button id="refresh" class="secondary">Обновить</button></div><div id="list" class="items"></div><div id="queueMsg" class="notice" role="status"></div></div>
+</section>
+</main>
+<script>
+"use strict";
+let csrfToken="";
+const $=id=>document.getElementById(id);
+async function api(url,options={}){
+ const headers={"Accept":"application/json",...(options.headers||{})};
+ if(options.body)headers["Content-Type"]="application/json";
+ if(csrfToken&&options.method&&options.method!=="GET")headers["X-CSRF-Token"]=csrfToken;
+ const response=await fetch(url,{...options,headers,credentials:"same-origin"});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(data.error||"Ошибка запроса");
+ return data;
+}
+function showDashboard(){ $("login").classList.add("hidden");$("dashboard").classList.remove("hidden");$("logout").classList.remove("hidden"); }
+function showLogin(){ $("dashboard").classList.add("hidden");$("login").classList.remove("hidden");$("logout").classList.add("hidden");csrfToken=""; }
+$("loginForm").addEventListener("submit",async e=>{
+ e.preventDefault();$("loginMsg").textContent="Проверяем данные…";$("loginMsg").className="notice";
+ $("loginBtn").disabled=true;
+ try{const data=await api("/api/admin/login",{method:"POST",body:JSON.stringify({email:$("email").value,password:$("password").value})});csrfToken=data.csrfToken;showDashboard();await loadQueue();}
+ catch(err){$("loginMsg").textContent=err.message;$("loginMsg").className="notice error";}
+ finally{$("loginBtn").disabled=false;}
+});
+async function loadQueue(){
+ $("queueMsg").textContent="Загружаем…";const box=$("list");box.replaceChildren();
+ try{const data=await api("/api/admin/submissions");
+ if(!data.items.length){$("queueMsg").textContent="Новых объявлений на проверку нет.";return;}
+ $("queueMsg").textContent="";
+ for(const item of data.items){
+  const card=document.createElement("article");card.className="item";
+  const img=document.createElement("img");img.alt="Фото предмета";img.loading="lazy";img.src="/api/admin/submissions/"+encodeURIComponent(item.id)+"/photo";
+  const content=document.createElement("div");
+  const title=document.createElement("h3");title.textContent=item.title;
+  const meta=document.createElement("div");meta.className="meta";meta.textContent=[item.kind,item.category,item.area,item.date].join(" · ");
+  const desc=document.createElement("p");desc.className="desc";desc.textContent=item.description;
+  const actions=document.createElement("div");actions.className="actions";
+  const approve=document.createElement("button");approve.textContent="Одобрить";approve.addEventListener("click",()=>review(item.id,"approved",approve));
+  const reject=document.createElement("button");reject.textContent="Отклонить";reject.className="danger";reject.addEventListener("click",()=>review(item.id,"rejected",reject));
+  actions.append(approve,reject);content.append(title,meta,desc,actions);card.append(img,content);box.append(card);
+ }
+ }catch(err){$("queueMsg").textContent=err.message;$("queueMsg").className="notice error";if(err.message.includes("Войдите")||err.message.includes("сессия"))showLogin();}
+}
+async function review(id,status,button){button.disabled=true;try{await api("/api/admin/submissions/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});await loadQueue();}catch(err){$("queueMsg").textContent=err.message;$("queueMsg").className="notice error";button.disabled=false;}}
+$("refresh").addEventListener("click",loadQueue);
+$("logout").addEventListener("click",async()=>{try{await api("/api/admin/logout",{method:"POST",body:"{}"});}catch{}showLogin();});
+(async()=>{try{await api("/api/admin/me");showLogin();}catch{showLogin();}})();
+</script></body></html>
