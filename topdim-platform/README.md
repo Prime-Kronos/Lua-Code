@@ -1,17 +1,32 @@
-# Topdim demo
+# Topdim — full-stack prototype
 
-Responsive lost-and-found platform concept for Uzbekistan.
+Lost-and-found platform concept for Uzbekistan.
 
 ## Stack
-- Node.js + Express API
-- PostgreSQL (Neon) for fictional demo listings
+- Node.js 20 + Express API
+- PostgreSQL (optional; Neon-compatible)
 - Responsive HTML/CSS/JS
-- GSAP animations and Lucide icons
+- Custom SVG icon sprite based on the supplied Topdim icon direction
+
+## Implemented
+- Public catalogue with search and category/type filters
+- Lost/found submission form
+- Server-side validation, length limits, honeypot and basic per-IP rate limiting
+- New submissions remain private (pending) until approved
+- Admin moderation API protected by ADMIN_TOKEN
+- /api/health reports runtime/database mode
+
+## API
+- GET /api/health
+- GET /api/listings?q=&category=&kind=
+- POST /api/listings — creates a pending submission
+- GET /api/admin/submissions — requires x-admin-token
+- PATCH /api/admin/submissions/:id with {"status":"approved"|"rejected"} — requires x-admin-token
 
 ## Local run
-`npm install && npm start`
+npm install && npm start
 
-Set `DATABASE_URL` to PostgreSQL to persist the fictional sample catalogue. Without it, the app falls back to in-memory demo listings.
+Set DATABASE_URL to PostgreSQL to persist submissions. Without it, submissions are stored in process memory and are lost when the service restarts. Set a long random ADMIN_TOKEN in hosting secret environment variables before enabling moderation.
 
-## Demo-only safeguards
-Registration, submissions, claims, messaging, organisation logins and uploads are intentionally disabled. All catalogue entries are fictional. Do not enter real personal information. The provisioned Neon database is in the EU and must not be used for real personal data of Uzbekistan residents until local legal and data-localisation requirements are reviewed and an appropriate local data setup is selected.
+## Important limits
+This is a prototype, not a public production service. It has no user accounts, claim workflow, private messaging, image uploads, or organization portal yet. Do not publish real personal information. Do not add phone numbers, emails, exact addresses, ID data, or unique identifying details to public descriptions. The previously created Neon database is in the EU; review Uzbekistan's personal-data and localization requirements with a qualified local professional before processing real residents' personal data. Since the project owner is under 18, involve a parent or guardian in hosting accounts, contracts, payments and public launch.
