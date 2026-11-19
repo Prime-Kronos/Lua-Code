@@ -60,12 +60,13 @@ const submissionSchema = z.object({
   category: z.enum(categories),
   kind: z.enum(kinds),
   area: z.string().trim().min(2).max(80),
-  date: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
-  description: z.string().trim().min(10).max(240)
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  description: z.string().trim().min(10).max(240),
+  consent: z.literal("yes")
 }).strict();
 
 function cleanText(value) {
-  return String(value).replace(/[\\u0000-\\u001f\\u007f]/g, " ").replace(/<[^>]*>/g, "").replace(/\\s+/g, " ").trim();
+  return String(value).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 }
 function publicShape(row) {
   return {
@@ -111,7 +112,7 @@ async function limit(action, max, windowSeconds) {
 }
 function requireAdmin(req, res, next) {
   const expected = process.env.ADMIN_TOKEN || "";
-  const provided = (req.get("authorization") || "").replace(/^Bearer\\s+/i, "");
+  const provided = (req.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (expected.length < 32) return res.status(503).json({ error: "Доступ модератора не настроен." });
   const a = Buffer.from(expected);
   const b = Buffer.from(provided);
@@ -193,7 +194,8 @@ app.post("/api/listings", limit("create_listing", 5, 3600), upload.single("photo
       kind: req.body.kind,
       area: cleanText(req.body.area || ""),
       date: req.body.date,
-      description: cleanText(req.body.description || "")
+      description: cleanText(req.body.description || ""),
+      consent: req.body.consent
     };
     const parsed = submissionSchema.safeParse(raw);
     if (!parsed.success) return res.status(400).json({ error: "Проверь название, категорию, тип, дату и описание.", requestId: req.requestId });
