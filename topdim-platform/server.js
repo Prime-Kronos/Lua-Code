@@ -154,7 +154,7 @@ app.get("/api/health", async (_req, res) => {
     moderationConfigured: Boolean(process.env.ADMIN_TOKEN && process.env.ADMIN_TOKEN.length >= 32)
   });
 });
-app.get("/api/listings", async (req, res) => {
+app.get("/api/listings", limit("public_list", 120, 60), async (req, res) => {
   if (!pool) return res.json({ items: [], total: 0, mode: "read-only" });
   try {
     const q = cleanText(String(req.query.q || "")).slice(0, 80);
@@ -214,6 +214,7 @@ app.post("/api/listings", limit("create_listing", 5, 3600), upload.single("photo
     await pool.query("INSERT INTO topdim_audit_log(event,submission_id,actor) VALUES('submission_created',$1,'public')", [id]);
     res.status(201).json({ ok: true, id, status: "pending", message: "Объявление отправлено на проверку. Оно появится после одобрения модератором." });
   } catch (error) {
+    if (error && /unsupported image|input buffer|corrupt|invalid image/i.test(error.message || "")) return res.status(400).json({ error: "Файл не является корректным изображением.", requestId: req.requestId });
     if (error instanceof multer.MulterError) return res.status(400).json({ error: error.code === "LIMIT_FILE_SIZE" ? "Фото должно быть меньше 5 МБ." : "Не удалось загрузить файл.", requestId: req.requestId });
     if (/формат|изображения/i.test(error.message || "")) return res.status(400).json({ error: error.message, requestId: req.requestId });
     console.error("submission_failed", req.requestId, error.message);
@@ -230,11 +231,25 @@ app.get("/api/admin/submissions", requireAdmin, limit("admin_list", 30, 60), asy
     res.status(503).json({ error: "Очередь модерации недоступна.", requestId: req.requestId });
   }
 });
+app.get("/api/admin/submissions/:id/photo", requireAdmin, limit("admin_photo", 30, 60), async (req, res) => {
+  try {
+    const result = await pool.query("SELECT photo_data FROM topdim_submissions WHERE id=$1 AND status='pending'", [req.params.id]);
+    if (!result.rowCount) return res.sendStatus(404);
+    res.setHeader("Content-Type", "image/webp");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(result.rows[0].photo_data);
+  } catch (error) {
+    console.error("moderation_photo_failed", req.requestId, error.message);
+    res.sendStatus(503);
+  }
+});
 app.patch("/api/admin/submissions/:id", requireAdmin, limit("admin_review", 60, 60), async (req, res) => {
   const status = req.body && req.body.status;
   if (!["approved","rejected"].includes(status)) return res.status(400).json({ error: "Статус должен быть approved или rejected." });
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query("BEGIN");
     const result = await client.query("UPDATE topdim_submissions SET status=$1,reviewed_at=NOW() WHERE id=$2 AND status='pending' RETURNING id,status", [status, req.params.id]);
     if (!result.rowCount) {
@@ -245,10 +260,10 @@ app.patch("/api/admin/submissions/:id", requireAdmin, limit("admin_review", 60, 
     await client.query("COMMIT");
     res.json({ ok: true, item: result.rows[0] });
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (client) await client.query("ROLLBACK");
     console.error("moderation_update_failed", req.requestId, error.message);
     res.status(503).json({ error: "Не удалось обновить статус.", requestId: req.requestId });
-  } finally { client.release(); }
+  } finally { if (client) client.release(); }
 });
 app.use(express.static(path.join(__dirname, "public"), {
   extensions: ["html"],
