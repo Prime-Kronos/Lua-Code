@@ -34,3 +34,22 @@ CREATE TABLE IF NOT EXISTS topdim_audit_log (
 );
 CREATE INDEX IF NOT EXISTS topdim_audit_created_idx
   ON topdim_audit_log (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS topdim_admins (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(254) NOT NULL UNIQUE,
+  password_hash CHAR(128) NOT NULL,
+  password_salt CHAR(32) NOT NULL,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('owner','moderator')),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS topdim_admin_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id UUID NOT NULL REFERENCES topdim_admins(id) ON DELETE CASCADE,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  csrf_token VARCHAR(64) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS topdim_admin_sessions_expiry_idx ON topdim_admin_sessions(expires_at);
