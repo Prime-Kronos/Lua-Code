@@ -1,30 +1,274 @@
+"use strict";
 const express = require("express");
 const helmet = require("helmet");
-const path = require("path");
+const multer = require("multer");
+const sharp = require("sharp");
+const { z } = require("zod");
 const { Pool } = require("pg");
+const crypto = require("node:crypto");
+const fs = require("node:fs/promises");
+const path = require("node:path");
+
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const isProduction = process.env.NODE_ENV === "production";
+const pool = process.env.DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_SSL === "disable" ? false : { rejectUnauthorized: true },
+      max: Number(process.env.PG_POOL_MAX || 5),
+      connectionTimeoutMillis: 7000,
+      idleTimeoutMillis: 30000,
+      statement_timeout: 8000,
+      query_timeout: 10000
+    })
+  : null;
+
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
+  res.setHeader("X-Request-ID", req.requestId);
+  next();
+});
+app.use(helmet({
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://unpkg.com", "https://cdnjs.cloudflare.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "blob:", "https://*.basemaps.cartocdn.com"],
+      connectSrc: ["'self'", "https://*.basemaps.cartocdn.com"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: isProduction ? [] : null
+    }
+  },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" }
+}));
+app.use(express.json({ limit: "12kb", strict: true }));
+app.use(express.urlencoded({ extended: false, limit: "12kb", parameterLimit: 30 }));
+
 const categories = ["Электроника","Аксессуары","Ключи","Сумки","Документы","Одежда","Другое"];
 const kinds = ["Потеряно","Найдено"];
-const demo = [];
-const memory = { submissions:[], attempts:new Map() };
-let pool = null;
-if (process.env.DATABASE_URL) pool = new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false},max:3,connectionTimeoutMillis:8000,idleTimeoutMillis:10000});
-app.disable("x-powered-by");
-app.use(helmet({contentSecurityPolicy:false}));
-app.use(express.json({limit:"12kb"}));
-const clean = (v,n) => String(v || "").trim().replace(/[<>]/g,"").slice(0,n);
-const validDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
-function iconFor(c){return ({"Электроника":"phone","Аксессуары":"wallet","Ключи":"key","Сумки":"backpack","Документы":"file-text","Одежда":"shirt"})[c] || "package";}
-function rateLimit(req,res,next){const k=req.ip||"unknown",now=Date.now(),win=3600000;const old=(memory.attempts.get(k)||[]).filter(t=>now-t<win);if(old.length>=5)return res.status(429).json({error:"Слишком много попыток. Попробуйте позже."});old.push(now);memory.attempts.set(k,old);next();}
-function adminOnly(req,res,next){const token=process.env.ADMIN_TOKEN;if(!token)return res.status(503).json({error:"Модерация ещё не настроена на сервере."});if(req.get("x-admin-token")!==token)return res.status(401).json({error:"Нет доступа."});next();}
-async function initDb(){if(!pool)return;await pool.query("CREATE TABLE IF NOT EXISTS topdim_submissions (id TEXT PRIMARY KEY,title VARCHAR(60) NOT NULL,category VARCHAR(30) NOT NULL,kind VARCHAR(12) NOT NULL,area VARCHAR(80) NOT NULL,item_date DATE NOT NULL,description VARCHAR(240) NOT NULL,status VARCHAR(12) NOT NULL DEFAULT 'pending',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");}
-async function publicItems(){let extra=memory.submissions.filter(x=>x.status==="approved");if(pool){const r=await pool.query("SELECT id,title,category,kind,area,item_date::text AS date,description,created_at::text AS createdat FROM topdim_submissions WHERE status='approved' ORDER BY created_at DESC LIMIT 100");extra=r.rows.map(x=>({...x,createdAt:x.createdat,icon:iconFor(x.category)}));}return extra.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));}
-app.get("/api/health",async(_q,s)=>{let database="memory-demo";if(pool){try{await pool.query("SELECT 1");database="postgres-connected";}catch{database="postgres-unavailable";}}s.json({ok:true,app:"Topdim",mode:"presentation-only",database,sampleListings:false,moderation:!!process.env.ADMIN_TOKEN});});
-app.get("/api/listings",async(q,s)=>{try{const term=clean(q.query.q,80).toLowerCase(),cat=clean(q.query.category,30),kind=clean(q.query.kind,12);const rows=await publicItems();const items=rows.filter(x=>(!term||[x.title,x.category,x.area,x.description].join(" ").toLowerCase().includes(term))&&(!cat||cat==="Все"||cat==="Все категории"||x.category===cat)&&(!kind||kind==="Все"||x.kind===kind));s.json({items,total:items.length,mode:pool?"postgres":"memory-demo"});}catch{s.status(503).json({error:"Каталог временно недоступен."});}});
-app.post("/api/listings",rateLimit,(_req,res)=>res.status(503).json({error:"Публикация пока отключена: база данных и модерация не настроены. Не отправляйте настоящие персональные данные в презентационной версии."}));
-app.get("/api/admin/submissions",adminOnly,async(_q,s)=>{if(pool){const r=await pool.query("SELECT id,title,category,kind,area,item_date::text AS date,description,status,created_at FROM topdim_submissions ORDER BY created_at DESC LIMIT 200");return s.json({items:r.rows});}s.json({items:memory.submissions});});
-app.patch("/api/admin/submissions/:id",adminOnly,async(q,s)=>{const status=q.body&&q.body.status;if(!["approved","rejected"].includes(status))return s.status(400).json({error:"Недопустимый статус."});if(pool){const r=await pool.query("UPDATE topdim_submissions SET status=$1 WHERE id=$2 RETURNING id,status",[status,clean(q.params.id,60)]);if(!r.rowCount)return s.status(404).json({error:"Объявление не найдено."});return s.json({ok:true,item:r.rows[0]});}const item=memory.submissions.find(x=>x.id===q.params.id);if(!item)return s.status(404).json({error:"Объявление не найдено."});item.status=status;s.json({ok:true,item:{id:item.id,status:item.status}});});
-app.use(express.static(path.join(__dirname,"public"),{extensions:["html"]}));
-app.get("*",(_q,s)=>s.sendFile(path.join(__dirname,"public","index.html")));
-initDb().then(()=>app.listen(PORT,"0.0.0.0",()=>console.log("Topdim listening on "+PORT))).catch(e=>{console.error("DB init failed:",e.message);app.listen(PORT,"0.0.0.0",()=>console.log("Topdim running in fallback mode"));});
+const submissionSchema = z.object({
+  title: z.string().trim().min(2).max(60),
+  category: z.enum(categories),
+  kind: z.enum(kinds),
+  area: z.string().trim().min(2).max(80),
+  date: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+  description: z.string().trim().min(10).max(240)
+}).strict();
+
+function cleanText(value) {
+  return String(value).replace(/[\\u0000-\\u001f\\u007f]/g, " ").replace(/<[^>]*>/g, "").replace(/\\s+/g, " ").trim();
+}
+function publicShape(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category,
+    kind: row.kind,
+    area: row.area,
+    date: row.item_date,
+    description: row.description,
+    createdAt: row.created_at,
+    icon: ({ "Электроника":"phone", "Аксессуары":"wallet", "Ключи":"key", "Сумки":"backpack", "Документы":"file-text", "Одежда":"shirt" })[row.category] || "package",
+    photoUrl: "/api/listings/" + row.id + "/photo"
+  };
+}
+function hashClient(req) {
+  const salt = process.env.RATE_LIMIT_SECRET || process.env.ADMIN_TOKEN || "topdim-development-only";
+  return crypto.createHmac("sha256", salt).update(String(req.ip || "unknown")).digest("hex");
+}
+async function limit(action, max, windowSeconds) {
+  return async (req, res, next) => {
+    if (!pool) return res.status(503).json({ error: "Сервис временно недоступен: база данных не подключена.", requestId: req.requestId });
+    try {
+      const seconds = Math.floor(Date.now() / (windowSeconds * 1000)) * windowSeconds;
+      const start = new Date(seconds * 1000);
+      const result = await pool.query(
+        "INSERT INTO topdim_rate_limits(bucket_key,action,window_start,hits) VALUES($1,$2,$3,1) ON CONFLICT(bucket_key,action,window_start) DO UPDATE SET hits=topdim_rate_limits.hits+1 RETURNING hits",
+        [hashClient(req), action, start]
+      );
+      const used = Number(result.rows[0].hits);
+      res.setHeader("RateLimit-Limit", String(max));
+      res.setHeader("RateLimit-Remaining", String(Math.max(0, max - used)));
+      if (used > max) {
+        res.setHeader("Retry-After", String(windowSeconds - (Math.floor(Date.now()/1000) % windowSeconds)));
+        return res.status(429).json({ error: "Слишком много запросов. Попробуйте позже.", requestId: req.requestId });
+      }
+      next();
+    } catch (error) {
+      console.error("rate_limit_failed", req.requestId, error.message);
+      res.status(503).json({ error: "Защита запросов временно недоступна.", requestId: req.requestId });
+    }
+  };
+}
+function requireAdmin(req, res, next) {
+  const expected = process.env.ADMIN_TOKEN || "";
+  const provided = (req.get("authorization") || "").replace(/^Bearer\\s+/i, "");
+  if (expected.length < 32) return res.status(503).json({ error: "Доступ модератора не настроен." });
+  const a = Buffer.from(expected);
+  const b = Buffer.from(provided);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: "Нет доступа." });
+  next();
+}
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 8, parts: 10 },
+  fileFilter: (_req, file, cb) => {
+    if (!["image/jpeg","image/png","image/webp"].includes(file.mimetype)) return cb(new Error("Разрешены только JPG, PNG или WebP."));
+    cb(null, true);
+  }
+});
+async function optimizePhoto(buffer) {
+  const image = sharp(buffer, { failOn: "error", limitInputPixels: 20_000_000 });
+  const meta = await image.metadata();
+  if (!["jpeg","png","webp"].includes(meta.format)) throw new Error("Недопустимый формат изображения.");
+  return image.rotate().resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).webp({ quality: 78, effort: 4 }).toBuffer();
+}
+async function initDb() {
+  if (!pool) return;
+  const schema = await fs.readFile(path.join(__dirname, "db", "schema.sql"), "utf8");
+  await pool.query(schema);
+  await pool.query("SELECT 1");
+}
+app.get("/api/health", async (_req, res) => {
+  let database = "not-configured";
+  if (pool) {
+    try { await pool.query("SELECT 1"); database = "connected"; }
+    catch { database = "unavailable"; }
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.status(database === "unavailable" ? 503 : 200).json({
+    ok: database !== "unavailable",
+    app: "Topdim",
+    database,
+    writesEnabled: database === "connected",
+    moderationConfigured: Boolean(process.env.ADMIN_TOKEN && process.env.ADMIN_TOKEN.length >= 32)
+  });
+});
+app.get("/api/listings", async (req, res) => {
+  if (!pool) return res.json({ items: [], total: 0, mode: "read-only" });
+  try {
+    const q = cleanText(String(req.query.q || "")).slice(0, 80);
+    const category = String(req.query.category || "");
+    const kind = String(req.query.kind || "");
+    const values = [q ? "%" + q.replace(/[\\%_]/g, "\\$&") + "%" : null, categories.includes(category) ? category : null, kinds.includes(kind) ? kind : null];
+    const result = await pool.query(
+      "SELECT id,title,category,kind,area,item_date::text AS item_date,description,created_at FROM topdim_submissions WHERE status='approved' AND ($1::text IS NULL OR title ILIKE $1 OR area ILIKE $1 OR description ILIKE $1) AND ($2::text IS NULL OR category=$2) AND ($3::text IS NULL OR kind=$3) ORDER BY created_at DESC LIMIT 100",
+      values
+    );
+    res.setHeader("Cache-Control", "public, max-age=15, stale-while-revalidate=30");
+    res.json({ items: result.rows.map(publicShape), total: result.rowCount, mode: "database" });
+  } catch (error) {
+    console.error("listings_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Каталог временно недоступен.", requestId: req.requestId });
+  }
+});
+app.get("/api/listings/:id/photo", async (req, res) => {
+  if (!pool) return res.sendStatus(404);
+  try {
+    const result = await pool.query("SELECT photo_data FROM topdim_submissions WHERE id=$1 AND status='approved'", [req.params.id]);
+    if (!result.rowCount) return res.sendStatus(404);
+    res.setHeader("Content-Type", "image/webp");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(result.rows[0].photo_data);
+  } catch (error) {
+    console.error("photo_failed", req.requestId, error.message);
+    res.sendStatus(503);
+  }
+});
+app.post("/api/listings", limit("create_listing", 5, 3600), upload.single("photo"), async (req, res) => {
+  try {
+    const raw = {
+      title: cleanText(req.body.title || ""),
+      category: req.body.category,
+      kind: req.body.kind,
+      area: cleanText(req.body.area || ""),
+      date: req.body.date,
+      description: cleanText(req.body.description || "")
+    };
+    const parsed = submissionSchema.safeParse(raw);
+    if (!parsed.success) return res.status(400).json({ error: "Проверь название, категорию, тип, дату и описание.", requestId: req.requestId });
+    if (!req.file) return res.status(400).json({ error: "Добавь фотографию вещи.", requestId: req.requestId });
+    const parsedDate = new Date(parsed.data.date + "T00:00:00Z");
+    if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0,10) !== parsed.data.date) return res.status(400).json({ error: "Укажи корректную дату.", requestId: req.requestId });
+    if (parsedDate.getTime() > Date.now() + 86400000) return res.status(400).json({ error: "Дата не может быть в будущем.", requestId: req.requestId });
+    const photo = await optimizePhoto(req.file.buffer);
+    if (photo.length > 2 * 1024 * 1024) return res.status(400).json({ error: "Фото слишком большое после обработки. Выбери другое.", requestId: req.requestId });
+    const id = crypto.randomUUID();
+    await pool.query(
+      "INSERT INTO topdim_submissions(id,title,category,kind,area,item_date,description,photo_data,photo_mime,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'image/webp','pending')",
+      [id, parsed.data.title, parsed.data.category, parsed.data.kind, parsed.data.area, parsed.data.date, parsed.data.description, photo]
+    );
+    await pool.query("INSERT INTO topdim_audit_log(event,submission_id,actor) VALUES('submission_created',$1,'public')", [id]);
+    res.status(201).json({ ok: true, id, status: "pending", message: "Объявление отправлено на проверку. Оно появится после одобрения модератором." });
+  } catch (error) {
+    if (error instanceof multer.MulterError) return res.status(400).json({ error: error.code === "LIMIT_FILE_SIZE" ? "Фото должно быть меньше 5 МБ." : "Не удалось загрузить файл.", requestId: req.requestId });
+    if (/формат|изображения/i.test(error.message || "")) return res.status(400).json({ error: error.message, requestId: req.requestId });
+    console.error("submission_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Не удалось сохранить объявление. Попробуйте позже.", requestId: req.requestId });
+  }
+});
+app.get("/api/admin/submissions", requireAdmin, limit("admin_list", 30, 60), async (req, res) => {
+  try {
+    const result = await pool.query("SELECT id,title,category,kind,area,item_date::text AS date,description,status,created_at FROM topdim_submissions WHERE status='pending' ORDER BY created_at ASC LIMIT 100");
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ items: result.rows });
+  } catch (error) {
+    console.error("moderation_list_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Очередь модерации недоступна.", requestId: req.requestId });
+  }
+});
+app.patch("/api/admin/submissions/:id", requireAdmin, limit("admin_review", 60, 60), async (req, res) => {
+  const status = req.body && req.body.status;
+  if (!["approved","rejected"].includes(status)) return res.status(400).json({ error: "Статус должен быть approved или rejected." });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query("UPDATE topdim_submissions SET status=$1,reviewed_at=NOW() WHERE id=$2 AND status='pending' RETURNING id,status", [status, req.params.id]);
+    if (!result.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Ожидающее объявление не найдено." });
+    }
+    await client.query("INSERT INTO topdim_audit_log(event,submission_id,actor) VALUES($1,$2,'admin')", ["submission_" + status, req.params.id]);
+    await client.query("COMMIT");
+    res.json({ ok: true, item: result.rows[0] });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("moderation_update_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Не удалось обновить статус.", requestId: req.requestId });
+  } finally { client.release(); }
+});
+app.use(express.static(path.join(__dirname, "public"), {
+  extensions: ["html"],
+  maxAge: isProduction ? "1h" : 0,
+  etag: true,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith(".geojson")) res.setHeader("Content-Type", "application/geo+json; charset=utf-8");
+  }
+}));
+app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
+app.use((error, req, res, _next) => {
+  if (error && error.message && /multipart|boundary/i.test(error.message)) return res.status(400).json({ error: "Некорректный формат загрузки.", requestId: req.requestId });
+  console.error("unhandled_request_error", req.requestId, error && error.message);
+  res.status(500).json({ error: "Внутренняя ошибка сервера.", requestId: req.requestId });
+});
+async function start() {
+  if (pool) {
+    try { await initDb(); console.log("Topdim database ready"); }
+    catch (error) { console.error("Database unavailable; write API remains closed:", error.message); }
+  }
+  const server = app.listen(PORT, "0.0.0.0", () => console.log("Topdim API listening on " + PORT));
+  const shutdown = async () => { server.close(async () => { if (pool) await pool.end(); process.exit(0); }); };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}
+start();
