@@ -85,7 +85,8 @@ function publicShape(row) {
   };
 }
 function hashClient(req) {
-  const salt = process.env.RATE_LIMIT_SECRET || process.env.ADMIN_TOKEN || "topdim-development-only";
+  const salt = process.env.RATE_LIMIT_SECRET || (isProduction ? "" : "topdim-development-only");
+  if (!salt || salt.length < 32) throw new Error("RATE_LIMIT_SECRET must be configured with at least 32 characters.");
   return crypto.createHmac("sha256", salt).update(String(req.ip || "unknown")).digest("hex");
 }
 function limit(action, max, windowSeconds) {
