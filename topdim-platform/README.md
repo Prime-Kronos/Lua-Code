@@ -30,3 +30,14 @@ Set DATABASE_URL to PostgreSQL to persist submissions. Without it, submissions a
 
 ## Important limits
 This is a prototype, not a public production service. It has no user accounts, claim workflow, private messaging, image uploads, or organization portal yet. Do not publish real personal information. Do not add phone numbers, emails, exact addresses, ID data, or unique identifying details to public descriptions. The previously created Neon database is in the EU; review Uzbekistan's personal-data and localization requirements with a qualified local professional before processing real residents' personal data. Since the project owner is under 18, involve a parent or guardian in hosting accounts, contracts, payments and public launch.
+
+
+## White redesign and map
+- Four live interface locales: Russian, Uzbek Latin, Uzbek Cyrillic, and English.
+- Responsive language selector in the top navigation.
+- Interactive Leaflet map with 14 administrative unit polygons, region selection and search.
+- Basemap tiles from CARTO using OpenStreetMap data; visible attribution is included.
+- Administrative GeoJSON from akbartus/GeoJSON-Uzbekistan (GPL-3.0); see `public/data/UZBEKISTAN-GEOJSON-LICENSE.txt`.
+- GSAP and CSS reveal animations with reduced-motion support.
+
+Map boundary data is an open community dataset, not a cadastral/legal boundary source. Do not use it for legal or surveying decisions.
