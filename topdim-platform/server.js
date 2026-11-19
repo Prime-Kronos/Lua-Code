@@ -86,7 +86,7 @@ function hashClient(req) {
   const salt = process.env.RATE_LIMIT_SECRET || process.env.ADMIN_TOKEN || "topdim-development-only";
   return crypto.createHmac("sha256", salt).update(String(req.ip || "unknown")).digest("hex");
 }
-async function limit(action, max, windowSeconds) {
+function limit(action, max, windowSeconds) {
   return async (req, res, next) => {
     if (!pool) return res.status(503).json({ error: "Сервис временно недоступен: база данных не подключена.", requestId: req.requestId });
     try {
@@ -113,7 +113,7 @@ async function limit(action, max, windowSeconds) {
 function requireAdmin(req, res, next) {
   const expected = process.env.ADMIN_TOKEN || "";
   const provided = (req.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (expected.length < 32) return res.status(503).json({ error: "Доступ модератора не настроен." });
+  if (!pool || expected.length < 32) return res.status(503).json({ error: "Доступ модератора не настроен." });
   const a = Buffer.from(expected);
   const b = Buffer.from(provided);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: "Нет доступа." });
@@ -188,6 +188,7 @@ app.get("/api/listings/:id/photo", async (req, res) => {
 });
 app.post("/api/listings", limit("create_listing", 5, 3600), upload.single("photo"), async (req, res) => {
   try {
+    if (req.body.website) return res.status(202).json({ ok: true, message: "Объявление отправлено на проверку." });
     const raw = {
       title: cleanText(req.body.title || ""),
       category: req.body.category,
@@ -259,7 +260,8 @@ app.use(express.static(path.join(__dirname, "public"), {
 }));
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 app.use((error, req, res, _next) => {
-  if (error && error.message && /multipart|boundary/i.test(error.message)) return res.status(400).json({ error: "Некорректный формат загрузки.", requestId: req.requestId });
+  if (error instanceof multer.MulterError) return res.status(400).json({ error: error.code === "LIMIT_FILE_SIZE" ? "Фото должно быть меньше 5 МБ." : "Некорректная загрузка файла.", requestId: req.requestId });
+  if (error && error.message && /multipart|boundary|JPG, PNG|image|format/i.test(error.message)) return res.status(400).json({ error: "Фото должно быть корректным JPG, PNG или WebP до 5 МБ.", requestId: req.requestId });
   console.error("unhandled_request_error", req.requestId, error && error.message);
   res.status(500).json({ error: "Внутренняя ошибка сервера.", requestId: req.requestId });
 });
