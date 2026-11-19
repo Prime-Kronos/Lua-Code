@@ -222,7 +222,7 @@ app.post("/api/admin/login", limit("admin_login", 8, 900), async (req, res) => {
   try { await adminAuth.login(req, res); }
   catch (error) { console.error("admin_login_failed", req.requestId, error.message); res.status(503).json({ error: "Не удалось выполнить вход." }); }
 });
-app.get("/api/admin/me", requireAdmin, (req, res) => { res.setHeader("Cache-Control", "no-store"); res.json({ admin: req.admin }); });
+app.get("/api/admin/me", requireAdmin, (req, res) => { res.setHeader("Cache-Control", "no-store"); res.json({ admin: { email: req.admin.email, role: req.admin.role }, csrfToken: req.admin.csrfToken }); });
 app.post("/api/admin/logout", requireAdmin, async (req, res) => {
   try { await adminAuth.logout(req, res); }
   catch (error) { console.error("admin_logout_failed", req.requestId, error.message); res.status(503).json({ error: "Не удалось завершить сессию." }); }
