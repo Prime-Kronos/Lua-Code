@@ -262,7 +262,7 @@ app.patch("/api/admin/submissions/:id", requireAdmin, limit("admin_review", 60, 
       await client.query("ROLLBACK");
       return res.status(404).json({ error: "Ожидающее объявление не найдено." });
     }
-    await client.query("INSERT INTO topdim_audit_log(event,submission_id,actor) VALUES($1,$2,'admin')", ["submission_" + status, req.params.id]);
+    await client.query("INSERT INTO topdim_audit_log(event,submission_id,actor) VALUES($1,$2,$3)", ["submission_" + status, req.params.id, req.admin.id]);
     await client.query("COMMIT");
     res.json({ ok: true, item: result.rows[0] });
   } catch (error) {
