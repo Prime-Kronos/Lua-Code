@@ -137,17 +137,22 @@ async function initDb() {
 }
 app.get("/api/health", async (_req, res) => {
   let database = "not-configured";
+  let adminCount = 0;
   if (pool) {
-    try { await pool.query("SELECT 1"); database = "connected"; }
-    catch { database = "unavailable"; }
+    try {
+      await pool.query("SELECT 1");
+      database = "connected";
+      const admins = await pool.query("SELECT COUNT(*)::int AS count FROM topdim_admins");
+      adminCount = admins.rows[0].count;
+    } catch { database = "unavailable"; }
   }
   res.setHeader("Cache-Control", "no-store");
   res.status(database === "unavailable" ? 503 : 200).json({
     ok: database !== "unavailable",
     app: "Topdim",
     database,
-    writesEnabled: database === "connected",
-    moderationConfigured: Boolean(pool && adminAuth)
+    writesEnabled: database === "connected" && (!isProduction || Boolean(process.env.RATE_LIMIT_SECRET && process.env.RATE_LIMIT_SECRET.length >= 32)),
+    moderationConfigured: database === "connected" && adminCount > 0
   });
 });
 app.get("/api/listings", limit("public_list", 120, 60), async (req, res) => {
