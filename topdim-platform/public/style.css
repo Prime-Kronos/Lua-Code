@@ -2,3 +2,24 @@
 .field-help{display:block;font-size:10px;line-height:1.6;color:#7d8792;margin-top:6px}.photo-preview{max-width:100%;max-height:220px;object-fit:contain;border:1px solid #e6e9ed;border-radius:12px;margin-top:10px}.map-toolbar{flex-wrap:wrap}.map-toolbar #myLocationBtn{background:#20242b;color:#fff;border-color:#20242b}@media(max-width:600px){.map-toolbar #myLocationBtn,.map-toolbar #mapReset{flex:1;max-width:none}}
 
 .listing-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit}.listing-card .card-art{position:relative;overflow:hidden}.listing-card .card-art:has(.listing-photo) .item-symbol{opacity:.12}.listing-card .card-art:has(.listing-photo) .art-orbit{opacity:.1}
+
+/* Map listings and clustering */
+.map-kind-filters{display:flex;gap:5px;align-items:center}
+.map-kind{height:40px;padding:0 12px;border:1px solid #e5e8ec;border-radius:9px;background:#fff;color:#66717c;font-size:9px;font-weight:800}
+.map-kind.active{background:#252a31;color:#fff;border-color:#252a31}
+.legend-lost,.legend-found{width:9px;height:9px;border-radius:50%;display:inline-block}
+.legend-lost{background:#b87939}.legend-found{background:#32815e}
+.topdim-map-marker-wrap{background:transparent;border:0}
+.topdim-map-marker{display:grid;place-items:center;width:24px;height:24px;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 9px #17212b55}
+.topdim-map-marker span{width:7px;height:7px;border-radius:50%;background:#fff}
+.marker-lost{background:#b87939}.marker-found{background:#32815e}
+.map-listing-popup{font-family:Manrope,Arial,sans-serif;max-width:230px}
+.map-listing-popup img{display:block;width:100%;height:105px;object-fit:cover;border-radius:8px;margin:8px 0}
+.map-listing-popup h3{font-size:13px;margin:7px 0 3px;color:#252a31}
+.map-listing-popup p{font-size:10px;line-height:1.5;color:#65707c;margin:4px 0}
+.map-listing-popup small{font-size:9px;color:#89919a}
+.popup-kind{display:inline-block;padding:4px 7px;border-radius:5px;font-size:9px}
+.popup-lost{background:#f3eee7;color:#876743}.popup-found{background:#e8f4ec;color:#28794f}
+.marker-cluster-small,.marker-cluster-medium,.marker-cluster-large{background:rgba(66,93,77,.18)!important}
+.marker-cluster-small div,.marker-cluster-medium div,.marker-cluster-large div{background:#42644f!important;color:white!important;font-family:Manrope,Arial,sans-serif;font-weight:800}
+@media(max-width:650px){.map-kind-filters{grid-column:1/-1}.map-kind{flex:1;padding:0 7px;font-size:8px}}
