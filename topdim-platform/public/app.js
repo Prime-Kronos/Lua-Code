@@ -1,4 +1,7 @@
 const $=s=>document.querySelector(s);
+const lazyScripts=new Map();
+function loadExternalScript(src){if(lazyScripts.has(src))return lazyScripts.get(src);const promise=new Promise((resolve,reject)=>{const script=document.createElement("script");script.src=src;script.async=true;script.onload=resolve;script.onerror=()=>{lazyScripts.delete(src);reject(new Error("Не удалось загрузить компонент."));};document.head.appendChild(script);});lazyScripts.set(src,promise);return promise;}
+function loadExternalStyle(href){if(document.querySelector('link[data-lazy-style="'+href+'"]'))return;const link=document.createElement("link");link.rel="stylesheet";link.href=href;link.dataset.lazyStyle=href;document.head.appendChild(link);}
 const state={items:[],kind:"Все",category:"Все категории",query:"",lang:"ru",map:null,regionLayer:null,regions:[],userMarker:null,mapMarkers:null,mapKind:"Все"};
 const icon=name=>'<svg aria-hidden="true"><use href="/icons.svg#'+name+'"></use></svg>';
 const safe=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -38,13 +41,7 @@ const categoryKey={"Электроника":"electronics","Аксессуары"
 function card(x){const found=x.kind==="Найдено",symbols={"Электроника":"phone","Аксессуары":"wallet","Ключи":"key","Сумки":"backpack","Документы":"file-text","Одежда":"shirt","Другое":"package"},symbol=x.icon||symbols[x.category]||"package";return '<article class="listing-card" data-listing-id="'+safe(x.id)+'"><div class="card-art '+(found?"found-art":"lost-art")+'">'+(x.photoUrl?'<img class="listing-photo" src="'+safe(x.photoUrl)+'" alt="" loading="lazy" decoding="async">':'')+'<span class="card-kind '+(found?"kind-found":"kind-lost")+'">'+tr(found?"kindFound":"kindLost")+'</span><span class="item-symbol">'+icon(symbol)+'</span><span class="art-orbit"></span></div><div class="card-content"><div class="card-meta"><span>'+safe(tr(categoryKey[x.category]||"other"))+'</span><span>'+safe(dateLabel(x.date))+'</span></div><h3>'+safe(x.title)+'</h3><p class="card-place">'+icon("map-pin")+safe(x.area)+'</p><p class="card-description">'+safe(x.description)+'</p><div class="card-bottom"><span>'+icon("shield")+tr("demoApproved")+'</span><button class="card-qr-btn" type="button" data-qr-id="'+safe(x.id)+'" aria-label="QR-код объявления"><svg><use href="/icons.svg#qr-code"/></svg> QR-код</button></div></div></article>';}
 function render(){if(!$("#listingGrid"))return;const list=state.items.filter(x=>(state.kind==="Все"||x.kind===state.kind)&&(state.category==="Все категории"||x.category===state.category)&&(!state.query||[x.title,x.category,x.area,x.description].join(" ").toLowerCase().includes(state.query)));$("#listingGrid").innerHTML=list.map(card).join("");$("#listingGrid").classList.toggle("hidden",!list.length);$("#emptyState").classList.toggle("hidden",!!list.length);$("#resultCount").textContent=tr("shownCount").replace("{shown}",list.length).replace("{total}",state.items.length);updateMapMarkers();animateListingCards();}
 
-function animateListingCards(){
- const cards=[...document.querySelectorAll(".listing-card:not([data-motion-ready])")];
- if(!cards.length)return;
- cards.forEach(card=>card.dataset.motionReady="1");
- if(!window.gsap||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
- gsap.fromTo(cards,{opacity:0},{opacity:1,duration:.2,stagger:.012,ease:"power1.out",clearProps:"opacity"});
-}
+function animateListingCards(){document.querySelectorAll(".listing-card").forEach(card=>card.dataset.motionReady="1");}
 
 async function load(){try{const r=await fetch("/api/listings");if(!r.ok)throw Error();const d=await r.json();state.items=d.items||[];render();}catch{$("#listingGrid").innerHTML='<div class="loading">'+tr("loadingError")+'</div>';$("#resultCount").textContent="";}}
 function openForm(kind){$("#listingKind").value=kind;$("#modalTitle").textContent=tr(kind==="Потеряно"?"lostBtn":"foundBtn");$("#modalBackdrop").classList.remove("hidden");document.body.classList.add("modal-open");$("#itemDate").value=new Date().toISOString().slice(0,10);setTimeout(()=>$("#itemTitle").focus(),80);}
@@ -76,37 +73,25 @@ $("#regionSelect").addEventListener("change",e=>focusRegion(e.target.value));
 $("#mapReset").addEventListener("click",()=>focusRegion(""));
 $("#regionSearch").addEventListener("input",e=>{const q=e.target.value.trim().toLowerCase();if(!q){$("#regionSelect").value="";updateRegionStyles();return;}const i=state.regions.findIndex(f=>{const p=f.properties;return [p.ADM1_EN,p.ADM1_RU,p.ADM1_UZ,regionLabel(p)].join(" ").toLowerCase().includes(q);});if(i>=0)focusRegion(i);});
 function animate(){
- const reduced=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
  const targets=document.querySelectorAll(".hero-copy,.hero-art,.trust-strip,.section,.org-section,.safety,footer");
- if("IntersectionObserver"in window){const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("is-visible");io.unobserve(entry.target);}}),{threshold:.04,rootMargin:"0px 0px 40px 0px"});targets.forEach(el=>{el.classList.add("reveal");io.observe(el);});}
- if(!window.gsap||reduced)return;
- if(window.ScrollTrigger)gsap.registerPlugin(window.ScrollTrigger);
- const intro=gsap.timeline({defaults:{ease:"power2.out"}});
- intro.from(".sidebar-brand",{x:-8,opacity:0,duration:.28})
-  .from(".side-link",{x:-5,opacity:0,stagger:.02,duration:.18},"-=.14")
-  .from(".topbar .top-actions > *",{y:-4,opacity:0,stagger:.03,duration:.18},"-=.1")
-  .from(".hero-copy .eyebrow",{y:5,opacity:0,duration:.2},"-=.05")
-  .from(".hero-copy h1",{y:12,opacity:0,duration:.34},"-=.1")
-  .from(".hero-copy>p,.hero-buttons,.hero-note",{y:7,opacity:0,stagger:.03,duration:.2},"-=.16")
-  .from(".hero-illustration",{y:10,rotate:-1,scale:.99,opacity:0,duration:.36},"-=.22");
- if(window.ScrollTrigger&&!matchMedia("(max-width:800px)").matches){
-  gsap.utils.toArray(".section-heading,.steps article,.org-copy,.org-visual,.safety").forEach(el=>gsap.fromTo(el,{y:9,opacity:.7},{y:0,opacity:1,duration:.32,ease:"power2.out",scrollTrigger:{trigger:el,start:"top 96%",once:true}}));
- }
+ if(!("IntersectionObserver"in window)||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+ const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("is-visible");io.unobserve(entry.target);}}),{threshold:.04,rootMargin:"0px 0px 24px 0px"});
+ targets.forEach(el=>{el.classList.add("reveal");io.observe(el);});
 }
 
 /* QR sharing and scanning */
 let activeQrUrl="", scannerStream=null, scannerFrame=0, scannerDetector=null, scannerActive=false;
 function listingUrl(id){const u=new URL("/",location.origin);u.searchParams.set("listing",id);return u.href;}
-function showQr(id){
+async function showQr(id){
  const item=state.items.find(x=>String(x.id)===String(id));if(!item){toast("Объявление не найдено.");return;}
- if(!window.QRCode){toast("Генератор QR временно недоступен. Обнови страницу.");return;}
+ try{if(!window.QRCode)await loadExternalScript("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js");}catch{toast("Генератор QR временно недоступен. Проверь интернет.");return;}
  activeQrUrl=listingUrl(item.id);$("#qrCanvas").innerHTML="";
  $("#qrTitle").textContent="QR-код: "+item.title;
  $("#qrDescription").textContent=(item.kind==="Найдено"?"Найдено":"Потеряно")+" · "+item.area;
  new QRCode($("#qrCanvas"),{text:activeQrUrl,width:224,height:224,colorDark:"#17251d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H});
  openQrLayer("qrBackdrop");
 }
-function openQrLayer(id){const el=$("#"+id);el.classList.remove("hidden");el.setAttribute("aria-hidden","false");document.body.classList.add("qr-open");if(window.gsap&&!matchMedia("(prefers-reduced-motion: reduce)").matches)gsap.fromTo(el.querySelector(".qr-dialog"),{y:22,opacity:0,scale:.97},{y:0,opacity:1,scale:1,duration:.32,ease:"power3.out"});}
+function openQrLayer(id){const el=$("#"+id);el.classList.remove("hidden");el.setAttribute("aria-hidden","false");document.body.classList.add("qr-open");}
 function closeQrLayer(id){const el=$("#"+id);if(!el)return;el.classList.add("hidden");el.setAttribute("aria-hidden","true");if(!document.querySelector(".qr-backdrop:not(.hidden)"))document.body.classList.remove("qr-open");}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-qr-id]");if(b){e.preventDefault();showQr(b.dataset.qrId);}});
 document.querySelectorAll("[data-close-qr]").forEach(b=>b.addEventListener("click",()=>closeQrLayer("qrBackdrop")));
@@ -131,6 +116,7 @@ async function startQrScanner(){
   scannerStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"}}});
   const video=$("#qrVideo");video.srcObject=scannerStream;await video.play();scannerActive=true;
   scannerDetector=("BarcodeDetector"in window)?new BarcodeDetector({formats:["qr_code"]}):null;
+  if(!scannerDetector&&!window.jsQR){try{await loadExternalScript("https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js");}catch{}}
   $("#scannerStatus").textContent="Наведите камеру на QR-код.";
   const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d",{willReadFrequently:true});
   const tick=async()=>{
@@ -161,7 +147,17 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"){stopQrScanner();clo
  document.addEventListener("click",e=>{const side=$("#appSidebar");if(side?.classList.contains("sidebar-open")&&!e.target.closest("#appSidebar")&&!e.target.closest("#menuBtn"))side.classList.remove("sidebar-open");});
 })();
 
-applyLanguage("ru");load().then(()=>{const id=new URLSearchParams(location.search).get("listing");if(id)openListingDetail(id);});initMap();animate();
+const routeParams=new URLSearchParams(location.search),directTag=routeParams.get("tag"),directListing=routeParams.get("listing");
+if(directTag||directListing){
+ document.body.classList.add("qr-standalone");
+ if(directTag)openPublicTag(directTag);else openListingDetail(directListing);
+}else{
+ applyLanguage("ru");load();animate();
+ loadExternalStyle("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
+ loadExternalStyle("https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css");
+ loadExternalStyle("https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css");
+ loadExternalScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js").then(()=>loadExternalScript("https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js")).then(()=>initMap()).catch(()=>{$("#mapOverlay").textContent=tr("mapError");});
+}
 const photoField=$("#itemPhoto");photoField?.addEventListener("change",()=>{const f=photoField.files?.[0];if(!f)return;if(!["image/jpeg","image/png","image/webp"].includes(f.type)||f.size>5*1024*1024){photoField.value="";toast("Фото должно быть JPG, PNG или WebP до 5 МБ.");return;}const im=$("#photoPreview");im.src=URL.createObjectURL(f);im.classList.remove("hidden");});
 function pointInRing(lon,lat,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];const crosses=((yi>lat)!==(yj>lat))&&(lon<(xj-xi)*(lat-yi)/(yj-yi+Number.EPSILON)+xi);if(crosses)inside=!inside;}return inside;}
 function pointInPolygon(lon,lat,poly){if(!poly?.length||!pointInRing(lon,lat,poly[0]))return false;for(let i=1;i<poly.length;i++)if(pointInRing(lon,lat,poly[i]))return false;return true;}
@@ -180,7 +176,7 @@ function saveMyQrTags(items){localStorage.setItem(QR_TAGS_KEY,JSON.stringify(ite
 function tagUrl(id){const u=new URL("/",location.origin);u.searchParams.set("tag",id);return u.href;}
 function qrTagPayload(){return {title:$("#qrTagTitle").value.trim(),description:$("#qrTagDescription").value.trim(),return_message:$("#qrTagMessage").value.trim()};}
 function refreshQrPreview(){const title=$("#qrTagTitle").value.trim()||"Твоя вещь";$("#qrPreviewTitle").textContent=title;$("#qrPreviewText").textContent=$("#qrTagDescription").value.trim()||"Отсканируй, чтобы открыть страницу возврата";$("#qrDescriptionCount").textContent=$("#qrTagDescription").value.length+" / 240";$("#qrMessageCount").textContent=$("#qrTagMessage").value.length+" / 240";}
-function drawTagQr(url){if(!window.QRCode){$("#qrTagError").textContent="Генератор QR не загрузился. Обнови страницу.";return false;}$("#qrTagCanvas").innerHTML="";new QRCode($("#qrTagCanvas"),{text:url,width:178,height:178,colorDark:"#17251d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H});return true;}
+function drawTagQr(url){if(!window.QRCode){$("#qrTagError").textContent="Готовим QR-код…";loadExternalScript("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js").then(()=>drawTagQr(url)).catch(()=>{$("#qrTagError").textContent="Не удалось загрузить генератор QR. Проверь интернет.";});return false;}$("#qrTagError").textContent="";$("#qrTagCanvas").innerHTML="";new QRCode($("#qrTagCanvas"),{text:url,width:178,height:178,colorDark:"#17251d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H});return true;}
 function renderMyQrTags(){const list=readMyQrTags(),root=$("#myQrTagsList");if(!root)return;if(!list.length){root.innerHTML='<p class="my-qr-empty">Пока нет сохранённых QR-кодов. Создай первую метку.</p>';return;}root.innerHTML=list.map(x=>'<article class="my-qr-tag"><div><b>'+safe(x.title||"Метка без названия")+'</b><small>Создана · '+safe(new Date(x.createdAt||Date.now()).toLocaleDateString("ru-RU"))+'</small></div><div class="my-qr-tag-actions"><button type="button" data-tag-open="'+safe(x.id)+'"><svg><use href="/icons.svg#external-link"/></svg> Открыть</button><button type="button" data-tag-edit="'+safe(x.id)+'"><svg><use href="/icons.svg#edit"/></svg> Изменить</button></div></article>').join("");}
 function showCreatedTag(tag,token){activeTagUrl=tagUrl(tag.id);activeTagManageToken=token||"";drawTagQr(activeTagUrl);$("#qrTagResult").classList.remove("hidden");$("#qrTagResult").querySelector("b").textContent="QR-код готов к печати";$("#qrPreviewTitle").textContent=tag.title||"Твоя вещь";$("#qrPreviewText").textContent=tag.description||"Отсканируй, чтобы открыть страницу возврата";$("#downloadTagKey").disabled=!token;$("#downloadTagKey").innerHTML='<svg><use href="/icons.svg#key"></use></svg> '+(token?"Сохранить ключ управления":"Ключ сохранён ранее");}
 $("#qrTagForm")?.addEventListener("submit",async e=>{e.preventDefault();const error=$("#qrTagError"),button=$("#qrTagSubmit"),id=$("#qrTagForm").dataset.editId;error.textContent="";button.disabled=true;button.textContent=id?"Сохраняем…":"Создаём QR…";try{const payload=qrTagPayload();const saved=readMyQrTags();let response;if(id){const own=saved.find(x=>x.id===id);if(!own)throw Error("Ключ управления не найден на этом устройстве.");response=await fetch("/api/qr-tags/"+encodeURIComponent(id),{method:"PUT",headers:{"Content-Type":"application/json","X-Manage-Token":own.token},body:JSON.stringify(payload)});}else{response=await fetch("/api/qr-tags",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});}const result=await response.json();if(!response.ok)throw Error(result.error||"Не удалось сохранить QR.");if(id){const next=saved.map(x=>x.id===id?{...x,title:result.tag.title,description:result.tag.description,returnMessage:result.tag.returnMessage}:x);saveMyQrTags(next);showCreatedTag(result.tag,next.find(x=>x.id===id)?.token||"");}else{const record={id:result.tag.id,title:result.tag.title,description:result.tag.description,returnMessage:result.tag.returnMessage,createdAt:result.tag.createdAt,token:result.manageToken};saveMyQrTags([record,...saved]);showCreatedTag(result.tag,result.manageToken);}renderMyQrTags();$("#qrTagForm").dataset.editId="";$("#qrFormTitle").textContent="Создать QR-метку";$("#qrTagSubmit").innerHTML='<svg><use href="/icons.svg#qr-code"></use></svg> Создать бесплатный QR';$("#qrTagCancelEdit").classList.add("hidden");toast(id?"Информация QR обновлена.":"QR-метка создана.");}catch(err){error.textContent=err.message||"Ошибка соединения.";}finally{button.disabled=false;if(!$("#qrTagForm").dataset.editId)button.innerHTML='<svg><use href="/icons.svg#qr-code"></use></svg> Создать бесплатный QR';else button.textContent="Сохранить изменения";}});
@@ -201,4 +197,4 @@ async function openPublicTag(id){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-
 document.querySelectorAll("[data-close-public-tag]").forEach(b=>b.addEventListener("click",()=>closeQrLayer("publicTagBackdrop")));
 $("#publicTagBackdrop")?.addEventListener("click",e=>{if(e.target.id==="publicTagBackdrop")closeQrLayer("publicTagBackdrop");});
 renderMyQrTags();refreshQrPreview();decorateActionButtons();
-const directTag=new URLSearchParams(location.search).get("tag");if(directTag)openPublicTag(directTag);
+
