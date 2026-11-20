@@ -36,7 +36,20 @@ function toast(message){const el=$("#toast");el.textContent=message;el.classList
 function dateLabel(value){const d=new Date(value+"T12:00:00");return Number.isNaN(d.getTime())?"":d.toLocaleDateString(state.lang==="uz"?"uz-UZ":state.lang==="uzc"?"uz-Cyrl-UZ":state.lang==="en"?"en-GB":"ru-RU",{day:"numeric",month:"short"});}
 const categoryKey={"Электроника":"electronics","Аксессуары":"accessories","Ключи":"keys","Сумки":"bags","Документы":"documents","Одежда":"clothing","Другое":"other"};
 function card(x){const found=x.kind==="Найдено",symbols={"Электроника":"phone","Аксессуары":"wallet","Ключи":"key","Сумки":"backpack","Документы":"file-text","Одежда":"shirt","Другое":"package"},symbol=x.icon||symbols[x.category]||"package";return '<article class="listing-card" data-listing-id="'+safe(x.id)+'"><div class="card-art '+(found?"found-art":"lost-art")+'">'+(x.photoUrl?'<img class="listing-photo" src="'+safe(x.photoUrl)+'" alt="" loading="lazy" decoding="async">':'')+'<span class="card-kind '+(found?"kind-found":"kind-lost")+'">'+tr(found?"kindFound":"kindLost")+'</span><span class="item-symbol">'+icon(symbol)+'</span><span class="art-orbit"></span></div><div class="card-content"><div class="card-meta"><span>'+safe(tr(categoryKey[x.category]||"other"))+'</span><span>'+safe(dateLabel(x.date))+'</span></div><h3>'+safe(x.title)+'</h3><p class="card-place">'+icon("map-pin")+safe(x.area)+'</p><p class="card-description">'+safe(x.description)+'</p><div class="card-bottom"><span>'+icon("shield")+tr("demoApproved")+'</span><button class="card-qr-btn" type="button" data-qr-id="'+safe(x.id)+'" aria-label="QR-код объявления">▦ QR-код</button></div></div></article>';}
-function render(){if(!$("#listingGrid"))return;const list=state.items.filter(x=>(state.kind==="Все"||x.kind===state.kind)&&(state.category==="Все категории"||x.category===state.category)&&(!state.query||[x.title,x.category,x.area,x.description].join(" ").toLowerCase().includes(state.query)));$("#listingGrid").innerHTML=list.map(card).join("");$("#listingGrid").classList.toggle("hidden",!list.length);$("#emptyState").classList.toggle("hidden",!!list.length);$("#resultCount").textContent=tr("shownCount").replace("{shown}",list.length).replace("{total}",state.items.length);updateMapMarkers();}
+function render(){if(!$("#listingGrid"))return;const list=state.items.filter(x=>(state.kind==="Все"||x.kind===state.kind)&&(state.category==="Все категории"||x.category===state.category)&&(!state.query||[x.title,x.category,x.area,x.description].join(" ").toLowerCase().includes(state.query)));$("#listingGrid").innerHTML=list.map(card).join("");$("#listingGrid").classList.toggle("hidden",!list.length);$("#emptyState").classList.toggle("hidden",!!list.length);$("#resultCount").textContent=tr("shownCount").replace("{shown}",list.length).replace("{total}",state.items.length);updateMapMarkers();animateListingCards();}
+
+function animateListingCards(){
+ const cards=[...document.querySelectorAll(".listing-card:not([data-motion-ready])")];
+ if(!cards.length)return;cards.forEach(card=>card.dataset.motionReady="1");
+ if(!window.gsap||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+ if(window.ScrollTrigger){gsap.fromTo(cards,{y:24,opacity:0,scale:.985,filter:"blur(4px)"},{y:0,opacity:1,scale:1,filter:"blur(0px)",duration:.58,stagger:.055,ease:"power3.out",scrollTrigger:{trigger:"#listingGrid",start:"top 88%"}});}
+ else gsap.fromTo(cards,{y:18,opacity:0},{y:0,opacity:1,duration:.5,stagger:.05,ease:"power3.out"});
+ cards.forEach(card=>{
+  card.addEventListener("pointermove",e=>{if(e.pointerType!=="mouse")return;const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;gsap.to(card,{rotateY:x*3,rotateX:-y*3,transformPerspective:900,duration:.28,ease:"power2.out"});});
+  card.addEventListener("pointerleave",()=>gsap.to(card,{rotateX:0,rotateY:0,duration:.42,ease:"power3.out"}));
+ });
+}
+
 async function load(){try{const r=await fetch("/api/listings");if(!r.ok)throw Error();const d=await r.json();state.items=d.items||[];render();}catch{$("#listingGrid").innerHTML='<div class="loading">'+tr("loadingError")+'</div>';$("#resultCount").textContent="";}}
 function openForm(kind){$("#listingKind").value=kind;$("#modalTitle").textContent=tr(kind==="Потеряно"?"lostBtn":"foundBtn");$("#modalBackdrop").classList.remove("hidden");document.body.classList.add("modal-open");$("#itemDate").value=new Date().toISOString().slice(0,10);setTimeout(()=>$("#itemTitle").focus(),80);}
 function closeForm(){$("#modalBackdrop").classList.add("hidden");document.body.classList.remove("modal-open");}
@@ -72,7 +85,7 @@ function animate(){
  const revealTargets=document.querySelectorAll(".hero-copy,.hero-art,.trust-strip,.section,.org-section,.safety,footer");
  if("IntersectionObserver"in window){const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("is-visible");io.unobserve(entry.target);}}),{threshold:.06});revealTargets.forEach(el=>{el.classList.add("reveal");io.observe(el);});}
  if(!window.gsap||reduced)return;
- gsap.registerPlugin?.(window.ScrollTrigger);
+ if(window.ScrollTrigger)gsap.registerPlugin(window.ScrollTrigger);
  const intro=gsap.timeline({defaults:{ease:"power3.out"}});
  intro.from(".sidebar-brand",{x:-18,opacity:0,duration:.55})
   .from(".side-link",{x:-14,opacity:0,stagger:.055,duration:.38},"-=.25")
@@ -83,7 +96,7 @@ function animate(){
   .from(".hero-illustration",{y:28,rotate:-5,scale:.94,opacity:0,duration:.9},"-=.65")
   .from(".float-note",{x:24,y:10,opacity:0,duration:.55},"-=.5");
  if(window.ScrollTrigger){
-  gsap.utils.toArray(".section-heading,.listing-card,.steps article,.org-copy,.org-visual,.safety").forEach((el,i)=>{
+  gsap.utils.toArray(".section-heading,.steps article,.org-copy,.org-visual,.safety").forEach((el,i)=>{
    gsap.fromTo(el,{y:26,opacity:0,filter:"blur(5px)"},{y:0,opacity:1,filter:"blur(0px)",duration:.72,ease:"power3.out",scrollTrigger:{trigger:el,start:"top 88%",once:true}});
   });
   gsap.to(".orbit-a",{rotate:8,duration:18,repeat:-1,yoyo:true,ease:"sine.inOut"});
