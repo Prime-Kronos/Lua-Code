@@ -36,3 +36,8 @@
 .leaflet-overlay-pane{z-index:400}
 .leaflet-tile-pane{z-index:200}
 .leaflet-overlay-pane path{stroke-linejoin:round}
+
+/* Region names remain visible over the map */
+.region-name-label{background:rgba(255,255,255,.9)!important;border:1px solid rgba(74,104,84,.22)!important;border-radius:5px!important;box-shadow:0 1px 4px rgba(20,35,25,.12)!important;color:#354d3d!important;font:700 10px/1.2 Manrope,Arial,sans-serif!important;padding:3px 5px!important;white-space:nowrap}
+.region-name-label:before{display:none!important}
+.leaflet-overlay-pane path{stroke:#60796a!important;stroke-width:2px!important}
