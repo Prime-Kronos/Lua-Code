@@ -84,8 +84,10 @@ function publicShape(row) {
     photoUrl: "/api/listings/" + row.id + "/photo"
   };
 }
-function hashClient(req) {
-  const salt = process.env.RATE_LIMIT_SECRET || (isProduction ? "" : "topdim-development-only");
+function hashClient(req, action) {
+  const salt = action === "public_list"
+    ? (process.env.PUBLIC_LIST_RATE_LIMIT_SECRET || (isProduction ? "" : "topdim-public-read-development-only"))
+    : (process.env.RATE_LIMIT_SECRET || (isProduction ? "" : "topdim-development-only"));
   if (!salt || salt.length < 32) throw new Error("RATE_LIMIT_SECRET must be configured with at least 32 characters.");
   return crypto.createHmac("sha256", salt).update(String(req.ip || "unknown")).digest("hex");
 }
@@ -97,7 +99,7 @@ function limit(action, max, windowSeconds) {
       const start = new Date(seconds * 1000);
       const result = await pool.query(
         "INSERT INTO topdim_rate_limits(bucket_key,action,window_start,hits) VALUES($1,$2,$3,1) ON CONFLICT(bucket_key,action,window_start) DO UPDATE SET hits=topdim_rate_limits.hits+1 RETURNING hits",
-        [hashClient(req), action, start]
+        [hashClient(req, action), action, start]
       );
       const used = Number(result.rows[0].hits);
       res.setHeader("RateLimit-Limit", String(max));
