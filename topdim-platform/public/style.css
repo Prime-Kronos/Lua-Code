@@ -23,3 +23,9 @@
 .marker-cluster-small,.marker-cluster-medium,.marker-cluster-large{background:rgba(66,93,77,.18)!important;background-image:none!important}
 .marker-cluster-small div,.marker-cluster-medium div,.marker-cluster-large div{background:#42644f!important;color:white!important;font-family:Manrope,Arial,sans-serif;font-weight:800}
 @media(max-width:650px){.map-kind-filters{grid-column:1/-1}.map-kind{flex:1;padding:0 7px;font-size:8px}}
+
+/* Map mobile layout hardening */
+.map-kind-filters{display:flex!important;flex:1 1 100%;width:100%;gap:6px;min-width:0}
+.map-kind{appearance:none;-webkit-appearance:none;flex:1 1 0;min-width:0;height:40px;padding:0 10px;border:1px solid #e5e8ec;border-radius:9px;background:#fff;color:#66717c;font:800 10px Manrope,Arial,sans-serif;line-height:1.2;white-space:nowrap}
+.map-kind.active{background:#252a31;color:#fff;border-color:#252a31}
+@media(max-width:650px){.map-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px}.map-kind-filters{grid-column:1/-1}.map-search{grid-column:1/-1;min-height:42px}.map-toolbar select,.map-toolbar .map-reset{width:100%;min-width:0;height:42px;font-size:9px}.map-frame{height:420px}.map-legend{align-items:flex-start;line-height:1.5}.map-approx-note{width:100%}}
