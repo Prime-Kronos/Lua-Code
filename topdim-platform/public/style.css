@@ -41,3 +41,8 @@
 .region-name-label{background:rgba(255,255,255,.9)!important;border:1px solid rgba(74,104,84,.22)!important;border-radius:5px!important;box-shadow:0 1px 4px rgba(20,35,25,.12)!important;color:#354d3d!important;font:700 10px/1.2 Manrope,Arial,sans-serif!important;padding:3px 5px!important;white-space:nowrap}
 .region-name-label:before{display:none!important}
 .leaflet-overlay-pane path{stroke:#60796a!important;stroke-width:2px!important}
+
+/* Uzbekistan-only map: clean vector background */
+#uzbekistanMap,.map-frame .leaflet-container{background:#f2f5f2!important}
+.leaflet-tile-pane{display:none!important}
+.leaflet-overlay-pane path{stroke:#526d5c!important;stroke-width:1.8px!important;fill:#d5e5d9!important;fill-opacity:1!important}
