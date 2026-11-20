@@ -20,6 +20,6 @@
 .map-listing-popup small{font-size:9px;color:#89919a}
 .popup-kind{display:inline-block;padding:4px 7px;border-radius:5px;font-size:9px}
 .popup-lost{background:#f3eee7;color:#876743}.popup-found{background:#e8f4ec;color:#28794f}
-.marker-cluster-small,.marker-cluster-medium,.marker-cluster-large{background:rgba(66,93,77,.18)!important}
+.marker-cluster-small,.marker-cluster-medium,.marker-cluster-large{background:rgba(66,93,77,.18)!important;background-image:none!important}
 .marker-cluster-small div,.marker-cluster-medium div,.marker-cluster-large div{background:#42644f!important;color:white!important;font-family:Manrope,Arial,sans-serif;font-weight:800}
 @media(max-width:650px){.map-kind-filters{grid-column:1/-1}.map-kind{flex:1;padding:0 7px;font-size:8px}}
