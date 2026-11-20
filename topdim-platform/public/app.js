@@ -40,11 +40,10 @@ function render(){if(!$("#listingGrid"))return;const list=state.items.filter(x=>
 
 function animateListingCards(){
  const cards=[...document.querySelectorAll(".listing-card:not([data-motion-ready])")];
- if(!cards.length)return;cards.forEach(card=>card.dataset.motionReady="1");
+ if(!cards.length)return;
+ cards.forEach(card=>card.dataset.motionReady="1");
  if(!window.gsap||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
- if(window.ScrollTrigger){gsap.fromTo(cards,{y:10,opacity:0},{y:0,opacity:1,duration:.28,stagger:.025,ease:"power2.out",scrollTrigger:{trigger:"#listingGrid",start:"top 96%"}});}
- else gsap.fromTo(cards,{y:8,opacity:0},{y:0,opacity:1,duration:.24,stagger:.02,ease:"power2.out"});
- 
+ gsap.fromTo(cards,{opacity:0},{opacity:1,duration:.2,stagger:.012,ease:"power1.out",clearProps:"opacity"});
 }
 
 async function load(){try{const r=await fetch("/api/listings");if(!r.ok)throw Error();const d=await r.json();state.items=d.items||[];render();}catch{$("#listingGrid").innerHTML='<div class="loading">'+tr("loadingError")+'</div>';$("#resultCount").textContent="";}}
@@ -154,7 +153,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"){stopQrScanner();clo
 
 /* Responsive sidebar navigation and active section tracking */
 (()=>{
- const links=[...document.querySelectorAll("[data-section]")], sections=["home","catalog","mapSection","how","organizations"].map(id=>document.getElementById(id)).filter(Boolean);
+ const links=[...document.querySelectorAll("[data-section]")], sections=["home","catalog","qrTags","mapSection","how","organizations"].map(id=>document.getElementById(id)).filter(Boolean);
  const setActive=id=>links.forEach(a=>a.classList.toggle("active",a.dataset.section===id));
  links.forEach(a=>a.addEventListener("click",()=>{setActive(a.dataset.section);document.getElementById("appSidebar")?.classList.remove("sidebar-open");}));
  if("IntersectionObserver"in window){const io=new IntersectionObserver(entries=>{const visible=entries.filter(e=>e.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];if(visible)setActive(visible.target.id);},{rootMargin:"-18% 0px -62% 0px",threshold:[0,.15,.35,.6]});sections.forEach(s=>io.observe(s));}
