@@ -53,3 +53,16 @@ CREATE TABLE IF NOT EXISTS topdim_admin_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS topdim_admin_sessions_expiry_idx ON topdim_admin_sessions(expires_at);
+
+
+CREATE TABLE IF NOT EXISTS topdim_qr_tags (
+  id UUID PRIMARY KEY,
+  title VARCHAR(60) NOT NULL DEFAULT '',
+  description VARCHAR(240) NOT NULL DEFAULT '',
+  return_message VARCHAR(240) NOT NULL DEFAULT '',
+  manage_token_hash CHAR(64) NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS topdim_qr_tags_active_idx ON topdim_qr_tags (created_at DESC) WHERE active=TRUE;
