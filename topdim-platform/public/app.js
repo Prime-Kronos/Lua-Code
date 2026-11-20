@@ -67,7 +67,35 @@ $("#mapKindFilters")?.addEventListener("click",e=>{const button=e.target.closest
 $("#regionSelect").addEventListener("change",e=>focusRegion(e.target.value));
 $("#mapReset").addEventListener("click",()=>focusRegion(""));
 $("#regionSearch").addEventListener("input",e=>{const q=e.target.value.trim().toLowerCase();if(!q){$("#regionSelect").value="";updateRegionStyles();return;}const i=state.regions.findIndex(f=>{const p=f.properties;return [p.ADM1_EN,p.ADM1_RU,p.ADM1_UZ,regionLabel(p)].join(" ").toLowerCase().includes(q);});if(i>=0)focusRegion(i);});
-function animate(){const targets=document.querySelectorAll(".hero-copy,.hero-art,.trust-strip,.section,.org-section");if("IntersectionObserver"in window){const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("is-visible");io.unobserve(entry.target);}}),{threshold:.08});targets.forEach(el=>{el.classList.add("reveal");io.observe(el);});}if(window.gsap&&!window.matchMedia("(prefers-reduced-motion: reduce)").matches){gsap.from(".hero-copy > *",{y:18,opacity:0,duration:.65,stagger:.08,ease:"power2.out",delay:.12});gsap.from(".hero-illustration",{y:22,opacity:0,rotate:0,duration:.85,ease:"power3.out",delay:.25});}}
+function animate(){
+ const reduced=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+ const revealTargets=document.querySelectorAll(".hero-copy,.hero-art,.trust-strip,.section,.org-section,.safety,footer");
+ if("IntersectionObserver"in window){const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("is-visible");io.unobserve(entry.target);}}),{threshold:.06});revealTargets.forEach(el=>{el.classList.add("reveal");io.observe(el);});}
+ if(!window.gsap||reduced)return;
+ gsap.registerPlugin?.(window.ScrollTrigger);
+ const intro=gsap.timeline({defaults:{ease:"power3.out"}});
+ intro.from(".sidebar-brand",{x:-18,opacity:0,duration:.55})
+  .from(".side-link",{x:-14,opacity:0,stagger:.055,duration:.38},"-=.25")
+  .from(".topbar .top-actions > *",{y:-10,opacity:0,stagger:.07,duration:.35},"-=.22")
+  .from(".hero-copy .eyebrow",{y:12,opacity:0,duration:.45},"-=.1")
+  .from(".hero-copy h1",{y:38,opacity:0,clipPath:"inset(0 0 100% 0)",duration:.8},"-=.22")
+  .from(".hero-copy>p,.hero-buttons,.hero-note",{y:18,opacity:0,stagger:.1,duration:.5},"-=.42")
+  .from(".hero-illustration",{y:28,rotate:-5,scale:.94,opacity:0,duration:.9},"-=.65")
+  .from(".float-note",{x:24,y:10,opacity:0,duration:.55},"-=.5");
+ if(window.ScrollTrigger){
+  gsap.utils.toArray(".section-heading,.listing-card,.steps article,.org-copy,.org-visual,.safety").forEach((el,i)=>{
+   gsap.fromTo(el,{y:26,opacity:0,filter:"blur(5px)"},{y:0,opacity:1,filter:"blur(0px)",duration:.72,ease:"power3.out",scrollTrigger:{trigger:el,start:"top 88%",once:true}});
+  });
+  gsap.to(".orbit-a",{rotate:8,duration:18,repeat:-1,yoyo:true,ease:"sine.inOut"});
+  gsap.to(".orbit-b",{rotate:52,duration:24,repeat:-1,yoyo:true,ease:"sine.inOut"});
+ }
+ document.querySelectorAll(".listing-card").forEach(card=>card.addEventListener("pointermove",e=>{
+  if(e.pointerType!=="mouse")return;const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;
+  gsap.to(card,{rotateY:x*3.2,rotateX:-y*3.2,transformPerspective:900,duration:.35,ease:"power2.out"});
+ }));
+ document.querySelectorAll(".listing-card").forEach(card=>card.addEventListener("pointerleave",()=>gsap.to(card,{rotateX:0,rotateY:0,duration:.45,ease:"power3.out"})));
+ document.querySelectorAll(".sidebar-create,.btn-primary").forEach(btn=>{btn.addEventListener("pointerenter",()=>gsap.to(btn,{y:-2,scale:1.015,duration:.2,ease:"power2.out"}));btn.addEventListener("pointerleave",()=>gsap.to(btn,{y:0,scale:1,duration:.3,ease:"power2.out"}));});
+}
 
 /* QR sharing and scanning */
 let activeQrUrl="", scannerStream=null, scannerFrame=0, scannerDetector=null, scannerActive=false;
@@ -124,6 +152,17 @@ async function startQrScanner(){
  }catch(err){$("#scannerStatus").textContent=err.name==="NotAllowedError"?"Разреши доступ к камере в настройках браузера.":"Не удалось запустить камеру. Проверь, что она не занята другим приложением.";}
 }
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){stopQrScanner();closeQrLayer("qrBackdrop");closeQrLayer("detailBackdrop");}});
+
+
+/* Responsive sidebar navigation and active section tracking */
+(()=>{
+ const links=[...document.querySelectorAll("[data-section]")], sections=["home","catalog","mapSection","how","organizations"].map(id=>document.getElementById(id)).filter(Boolean);
+ const setActive=id=>links.forEach(a=>a.classList.toggle("active",a.dataset.section===id));
+ links.forEach(a=>a.addEventListener("click",()=>{setActive(a.dataset.section);document.getElementById("appSidebar")?.classList.remove("sidebar-open");}));
+ if("IntersectionObserver"in window){const io=new IntersectionObserver(entries=>{const visible=entries.filter(e=>e.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];if(visible)setActive(visible.target.id);},{rootMargin:"-18% 0px -62% 0px",threshold:[0,.15,.35,.6]});sections.forEach(s=>io.observe(s));}
+ const menu=$("#menuBtn");menu?.addEventListener("click",()=>{$("#appSidebar")?.classList.toggle("sidebar-open");});
+ document.addEventListener("click",e=>{const side=$("#appSidebar");if(side?.classList.contains("sidebar-open")&&!e.target.closest("#appSidebar")&&!e.target.closest("#menuBtn"))side.classList.remove("sidebar-open");});
+})();
 
 applyLanguage("ru");load().then(()=>{const id=new URLSearchParams(location.search).get("listing");if(id)openListingDetail(id);});initMap();animate();
 const photoField=$("#itemPhoto");photoField?.addEventListener("change",()=>{const f=photoField.files?.[0];if(!f)return;if(!["image/jpeg","image/png","image/webp"].includes(f.type)||f.size>5*1024*1024){photoField.value="";toast("Фото должно быть JPG, PNG или WebP до 5 МБ.");return;}const im=$("#photoPreview");im.src=URL.createObjectURL(f);im.classList.remove("hidden");});
