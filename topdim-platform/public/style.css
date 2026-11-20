@@ -181,3 +181,20 @@ button,.btn,.chip,.dock-link,.side-link{touch-action:manipulation;-webkit-tap-hi
  body.printing-tag #qrPreviewCard .qr-preview-code canvas,body.printing-tag #qrPreviewCard .qr-preview-code img{width:40mm!important;height:40mm!important}
  @page{size:A6 portrait;margin:8mm}
 }
+
+/* QR route: lightweight, polished and responsive */
+svg{display:inline-block;vertical-align:middle}
+.side-icon svg,.dock-link svg,.brand-icon svg,.action-icon,.btn svg,.text-button svg,.map-reset svg,.step-icon svg,.card-qr-btn svg{display:block;flex:none}
+.qr-backdrop{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(15,24,19,.72)}
+.qr-backdrop .modal,.qr-backdrop .qr-dialog{animation:none!important;transition:none!important;transform:none!important;filter:none!important}
+.reveal,.reveal.is-visible{opacity:1!important;transform:none!important;transition:none!important}
+.qr-standalone{background:#f5f8f5;min-height:100vh}
+.qr-standalone #appSidebar,.qr-standalone .topbar,.qr-standalone #home,.qr-standalone footer,.qr-standalone .mobile-dock{display:none!important}
+.qr-standalone #publicTagBackdrop,.qr-standalone #detailBackdrop{display:grid!important;position:relative!important;inset:auto!important;min-height:100vh;padding:22px!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;z-index:1!important}
+.qr-standalone #publicTagBackdrop .modal,.qr-standalone #detailBackdrop .modal{width:min(100%,520px);max-height:none;overflow:visible;margin:auto;border:1px solid #e4ebe5;border-radius:24px;padding:clamp(22px,5vw,38px);box-shadow:0 16px 44px rgba(25,45,31,.08)}
+.qr-standalone .public-tag-dialog h2,.qr-standalone #detailBackdrop h2{font-size:clamp(23px,5vw,30px);letter-spacing:-.8px;line-height:1.2}
+.qr-standalone .public-tag-mark{width:58px;height:58px;background:#e9f4ec;color:#277346}
+.qr-standalone .public-tag-description,.qr-standalone .public-tag-message{font-size:14px;line-height:1.7;border-radius:14px;padding:16px}
+.qr-standalone .public-tag-content-title{font-size:10px;letter-spacing:1px;margin-top:18px}
+.qr-standalone .public-tag-safe{font-size:11px;line-height:1.6}
+@media(prefers-reduced-motion:reduce){.reveal,.qr-backdrop *{animation:none!important;transition:none!important}}
