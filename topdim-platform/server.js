@@ -240,6 +240,88 @@ app.post("/api/listings", limit("create_listing", 5, 3600), upload.single("photo
     res.status(503).json({ error: "Не удалось сохранить объявление. Попробуйте позже.", requestId: req.requestId });
   }
 });
+
+
+/* Free QR item tags: public information + private owner capability key. */
+const qrTagSchema = z.object({
+  title: z.string().trim().max(60).optional().default(""),
+  description: z.string().trim().max(240).optional().default(""),
+  return_message: z.string().trim().max(240).optional().default("")
+}).strict();
+function qrTagShape(row) {
+  return { id: row.id, title: row.title, description: row.description, returnMessage: row.return_message, createdAt: row.created_at };
+}
+function qrTokenHash(token) { return crypto.createHash("sha256").update(String(token)).digest("hex"); }
+function qrTagOwner(req, row) {
+  const token = req.get("x-manage-token") || "";
+  if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return false;
+  const a = Buffer.from(qrTokenHash(token), "hex");
+  const b = Buffer.from(row.manage_token_hash, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+app.post("/api/qr-tags", limit("create_qr_tag", 5, 3600), async (req, res) => {
+  const parsed = qrTagSchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: "Проверь поля QR-кода: слишком длинный текст." });
+  try {
+    const id = crypto.randomUUID();
+    const manageToken = crypto.randomBytes(32).toString("base64url");
+    const v = parsed.data;
+    const result = await pool.query(
+      "INSERT INTO topdim_qr_tags(id,title,description,return_message,manage_token_hash) VALUES($1,$2,$3,$4,$5) RETURNING id,title,description,return_message,created_at",
+      [id, cleanText(v.title).slice(0,60), cleanText(v.description).slice(0,240), cleanText(v.return_message).slice(0,240), qrTokenHash(manageToken)]
+    );
+    await pool.query("INSERT INTO topdim_audit_log(event,actor) VALUES('qr_tag_created','public')");
+    res.setHeader("Cache-Control", "no-store");
+    res.status(201).json({ ok: true, tag: qrTagShape(result.rows[0]), manageToken });
+  } catch (error) {
+    console.error("qr_tag_create_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Не удалось создать QR-код. Попробуй позже.", requestId: req.requestId });
+  }
+});
+app.get("/api/qr-tags/:id", limit("public_list", 120, 60), async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id)) return res.sendStatus(404);
+  try {
+    const result = await pool.query("SELECT id,title,description,return_message,created_at FROM topdim_qr_tags WHERE id=$1 AND active=TRUE LIMIT 1", [req.params.id]);
+    if (!result.rowCount) return res.status(404).json({ error: "QR-метка не найдена или отключена." });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ tag: qrTagShape(result.rows[0]) });
+  } catch (error) {
+    console.error("qr_tag_read_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Не удалось открыть QR-метку.", requestId: req.requestId });
+  }
+});
+app.put("/api/qr-tags/:id", limit("edit_qr_tag", 12, 3600), async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id)) return res.sendStatus(404);
+  const parsed = qrTagSchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: "Проверь поля QR-кода: слишком длинный текст." });
+  try {
+    const current = await pool.query("SELECT manage_token_hash FROM topdim_qr_tags WHERE id=$1 AND active=TRUE", [req.params.id]);
+    if (!current.rowCount || !qrTagOwner(req, current.rows[0])) return res.status(403).json({ error: "Ключ управления неверный. Изменения не сохранены." });
+    const v = parsed.data;
+    const updated = await pool.query(
+      "UPDATE topdim_qr_tags SET title=$1,description=$2,return_message=$3,updated_at=NOW() WHERE id=$4 AND active=TRUE RETURNING id,title,description,return_message,created_at",
+      [cleanText(v.title).slice(0,60), cleanText(v.description).slice(0,240), cleanText(v.return_message).slice(0,240), req.params.id]
+    );
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true, tag: qrTagShape(updated.rows[0]) });
+  } catch (error) {
+    console.error("qr_tag_update_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Не удалось обновить QR-метку.", requestId: req.requestId });
+  }
+});
+app.delete("/api/qr-tags/:id", limit("edit_qr_tag", 12, 3600), async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id)) return res.sendStatus(404);
+  try {
+    const current = await pool.query("SELECT manage_token_hash FROM topdim_qr_tags WHERE id=$1 AND active=TRUE", [req.params.id]);
+    if (!current.rowCount || !qrTagOwner(req, current.rows[0])) return res.status(403).json({ error: "Ключ управления неверный." });
+    await pool.query("UPDATE topdim_qr_tags SET active=FALSE,updated_at=NOW() WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("qr_tag_delete_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Не удалось отключить QR-метку.", requestId: req.requestId });
+  }
+});
+
 app.post("/api/admin/login", limit("admin_login", 8, 900), async (req, res) => {
   if (!adminAuth) return res.status(503).json({ error: "Авторизация не настроена." });
   try { await adminAuth.login(req, res); }
