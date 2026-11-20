@@ -175,6 +175,22 @@ app.get("/api/listings", limit("public_list", 120, 60), async (req, res) => {
     res.status(503).json({ error: "Каталог временно недоступен.", requestId: req.requestId });
   }
 });
+app.get("/api/listings/:id", limit("public_list", 120, 60), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Каталог временно недоступен." });
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id)) return res.sendStatus(404);
+  try {
+    const result = await pool.query(
+      "SELECT id,title,category,kind,area,item_date::text AS item_date,description,created_at FROM topdim_submissions WHERE id=$1 AND status='approved' LIMIT 1",
+      [req.params.id]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: "Объявление не найдено или ещё не опубликовано." });
+    res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+    res.json({ item: publicShape(result.rows[0]) });
+  } catch (error) {
+    console.error("listing_detail_failed", req.requestId, error.message);
+    res.status(503).json({ error: "Не удалось загрузить объявление.", requestId: req.requestId });
+  }
+});
 app.get("/api/listings/:id/photo", async (req, res) => {
   if (!pool) return res.sendStatus(404);
   try {
