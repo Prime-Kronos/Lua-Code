@@ -42,12 +42,9 @@ function animateListingCards(){
  const cards=[...document.querySelectorAll(".listing-card:not([data-motion-ready])")];
  if(!cards.length)return;cards.forEach(card=>card.dataset.motionReady="1");
  if(!window.gsap||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
- if(window.ScrollTrigger){gsap.fromTo(cards,{y:24,opacity:0,scale:.985,filter:"blur(4px)"},{y:0,opacity:1,scale:1,filter:"blur(0px)",duration:.58,stagger:.055,ease:"power3.out",scrollTrigger:{trigger:"#listingGrid",start:"top 88%"}});}
- else gsap.fromTo(cards,{y:18,opacity:0},{y:0,opacity:1,duration:.5,stagger:.05,ease:"power3.out"});
- cards.forEach(card=>{
-  card.addEventListener("pointermove",e=>{if(e.pointerType!=="mouse")return;const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;gsap.to(card,{rotateY:x*3,rotateX:-y*3,transformPerspective:900,duration:.28,ease:"power2.out"});});
-  card.addEventListener("pointerleave",()=>gsap.to(card,{rotateX:0,rotateY:0,duration:.42,ease:"power3.out"}));
- });
+ if(window.ScrollTrigger){gsap.fromTo(cards,{y:10,opacity:0},{y:0,opacity:1,duration:.28,stagger:.025,ease:"power2.out",scrollTrigger:{trigger:"#listingGrid",start:"top 96%"}});}
+ else gsap.fromTo(cards,{y:8,opacity:0},{y:0,opacity:1,duration:.24,stagger:.02,ease:"power2.out"});
+ 
 }
 
 async function load(){try{const r=await fetch("/api/listings");if(!r.ok)throw Error();const d=await r.json();state.items=d.items||[];render();}catch{$("#listingGrid").innerHTML='<div class="loading">'+tr("loadingError")+'</div>';$("#resultCount").textContent="";}}
@@ -62,7 +59,6 @@ $("#searchBtn").addEventListener("click",render);$("#categoryFilter").addEventLi
 $("#kindFilters").addEventListener("click",e=>{const b=e.target.closest("[data-kind]");if(!b)return;state.kind=b.dataset.kind;document.querySelectorAll(".chip").forEach(x=>x.classList.toggle("active",x===b));render();});
 function reset(){state.kind="Все";state.category="Все категории";state.query="";$("#searchInput").value="";$("#categoryFilter").value="Все категории";document.querySelectorAll(".chip").forEach(x=>x.classList.toggle("active",x.dataset.kind==="Все"));render();}
 $("#clearFilters").addEventListener("click",reset);$("#emptyReset").addEventListener("click",reset);$("#partnerBtn").addEventListener("click",()=>toast(tr("partnerSoon")));
-$("#menuBtn").addEventListener("click",()=>$("#mainNav").classList.toggle("nav-open"));
 $("#languageTrigger").addEventListener("click",()=>{const p=$("#languagePanel"),open=p.classList.toggle("hidden")===false;$("#languageTrigger").setAttribute("aria-expanded",String(open));});
 $("#languagePanel").addEventListener("click",e=>{const b=e.target.closest("[data-lang]");if(!b)return;applyLanguage(b.dataset.lang);$("#languagePanel").classList.add("hidden");$("#languageTrigger").setAttribute("aria-expanded","false");});
 document.addEventListener("click",e=>{if(!e.target.closest(".language-wrap")){$("#languagePanel").classList.add("hidden");$("#languageTrigger").setAttribute("aria-expanded","false");}});
@@ -82,32 +78,21 @@ $("#mapReset").addEventListener("click",()=>focusRegion(""));
 $("#regionSearch").addEventListener("input",e=>{const q=e.target.value.trim().toLowerCase();if(!q){$("#regionSelect").value="";updateRegionStyles();return;}const i=state.regions.findIndex(f=>{const p=f.properties;return [p.ADM1_EN,p.ADM1_RU,p.ADM1_UZ,regionLabel(p)].join(" ").toLowerCase().includes(q);});if(i>=0)focusRegion(i);});
 function animate(){
  const reduced=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
- const revealTargets=document.querySelectorAll(".hero-copy,.hero-art,.trust-strip,.section,.org-section,.safety,footer");
- if("IntersectionObserver"in window){const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("is-visible");io.unobserve(entry.target);}}),{threshold:.06});revealTargets.forEach(el=>{el.classList.add("reveal");io.observe(el);});}
+ const targets=document.querySelectorAll(".hero-copy,.hero-art,.trust-strip,.section,.org-section,.safety,footer");
+ if("IntersectionObserver"in window){const io=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("is-visible");io.unobserve(entry.target);}}),{threshold:.04,rootMargin:"0px 0px 40px 0px"});targets.forEach(el=>{el.classList.add("reveal");io.observe(el);});}
  if(!window.gsap||reduced)return;
  if(window.ScrollTrigger)gsap.registerPlugin(window.ScrollTrigger);
- const intro=gsap.timeline({defaults:{ease:"power3.out"}});
- intro.from(".sidebar-brand",{x:-18,opacity:0,duration:.55})
-  .from(".side-link",{x:-14,opacity:0,stagger:.055,duration:.38},"-=.25")
-  .from(".topbar .top-actions > *",{y:-10,opacity:0,stagger:.07,duration:.35},"-=.22")
-  .from(".hero-copy .eyebrow",{y:12,opacity:0,duration:.45},"-=.1")
-  .from(".hero-copy h1",{y:38,opacity:0,clipPath:"inset(0 0 100% 0)",duration:.8},"-=.22")
-  .from(".hero-copy>p,.hero-buttons,.hero-note",{y:18,opacity:0,stagger:.1,duration:.5},"-=.42")
-  .from(".hero-illustration",{y:28,rotate:-5,scale:.94,opacity:0,duration:.9},"-=.65")
-  .from(".float-note",{x:24,y:10,opacity:0,duration:.55},"-=.5");
- if(window.ScrollTrigger){
-  gsap.utils.toArray(".section-heading,.steps article,.org-copy,.org-visual,.safety").forEach((el,i)=>{
-   gsap.fromTo(el,{y:26,opacity:0,filter:"blur(5px)"},{y:0,opacity:1,filter:"blur(0px)",duration:.72,ease:"power3.out",scrollTrigger:{trigger:el,start:"top 88%",once:true}});
-  });
-  gsap.to(".orbit-a",{rotate:8,duration:18,repeat:-1,yoyo:true,ease:"sine.inOut"});
-  gsap.to(".orbit-b",{rotate:52,duration:24,repeat:-1,yoyo:true,ease:"sine.inOut"});
+ const intro=gsap.timeline({defaults:{ease:"power2.out"}});
+ intro.from(".sidebar-brand",{x:-8,opacity:0,duration:.28})
+  .from(".side-link",{x:-5,opacity:0,stagger:.02,duration:.18},"-=.14")
+  .from(".topbar .top-actions > *",{y:-4,opacity:0,stagger:.03,duration:.18},"-=.1")
+  .from(".hero-copy .eyebrow",{y:5,opacity:0,duration:.2},"-=.05")
+  .from(".hero-copy h1",{y:12,opacity:0,duration:.34},"-=.1")
+  .from(".hero-copy>p,.hero-buttons,.hero-note",{y:7,opacity:0,stagger:.03,duration:.2},"-=.16")
+  .from(".hero-illustration",{y:10,rotate:-1,scale:.99,opacity:0,duration:.36},"-=.22");
+ if(window.ScrollTrigger&&!matchMedia("(max-width:800px)").matches){
+  gsap.utils.toArray(".section-heading,.steps article,.org-copy,.org-visual,.safety").forEach(el=>gsap.fromTo(el,{y:9,opacity:.7},{y:0,opacity:1,duration:.32,ease:"power2.out",scrollTrigger:{trigger:el,start:"top 96%",once:true}}));
  }
- document.querySelectorAll(".listing-card").forEach(card=>card.addEventListener("pointermove",e=>{
-  if(e.pointerType!=="mouse")return;const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;
-  gsap.to(card,{rotateY:x*3.2,rotateX:-y*3.2,transformPerspective:900,duration:.35,ease:"power2.out"});
- }));
- document.querySelectorAll(".listing-card").forEach(card=>card.addEventListener("pointerleave",()=>gsap.to(card,{rotateX:0,rotateY:0,duration:.45,ease:"power3.out"})));
- document.querySelectorAll(".sidebar-create,.btn-primary").forEach(btn=>{btn.addEventListener("pointerenter",()=>gsap.to(btn,{y:-2,scale:1.015,duration:.2,ease:"power2.out"}));btn.addEventListener("pointerleave",()=>gsap.to(btn,{y:0,scale:1,duration:.3,ease:"power2.out"}));});
 }
 
 /* QR sharing and scanning */
@@ -156,7 +141,7 @@ async function startQrScanner(){
      let value=null;
      if(scannerDetector){const codes=await scannerDetector.detect(video);if(codes.length)value=codes[0].rawValue;}
      else if(window.jsQR){canvas.width=video.videoWidth;canvas.height=video.videoHeight;ctx.drawImage(video,0,0,canvas.width,canvas.height);const frame=ctx.getImageData(0,0,canvas.width,canvas.height);const code=jsQR(frame.data,frame.width,frame.height,{inversionAttempts:"dontInvert"});if(code)value=code.data;}
-     if(value){const u=new URL(value,location.origin);if(u.origin===location.origin&&u.pathname==="/"&&(u.searchParams.get("listing")||u.searchParams.get("tag"))){const listingId=u.searchParams.get("listing"),tagId=u.searchParams.get("tag");stopQrScanner();if(tagId)openPublicTag(tagId);else openListingDetail(listingId);return;}$("#scannerStatus").textContent="Этот QR-код не является ссылкой на объявление TopDim.";}
+     if(value){const u=new URL(value,location.origin);if(u.origin===location.origin&&u.pathname==="/"&&(u.searchParams.get("listing")||u.searchParams.get("tag"))){const listingId=u.searchParams.get("listing"),tagId=u.searchParams.get("tag");stopQrScanner();if(tagId)openPublicTag(tagId);else openListingDetail(listingId);return;}$("#scannerStatus").textContent="Этот QR-код не является ссылкой на TopDim. Используй QR объявления или QR-метки.";}
     }catch(e){console.debug("qr_scan_frame",e);}
    }
    scannerFrame=requestAnimationFrame(tick);
@@ -197,17 +182,24 @@ function tagUrl(id){const u=new URL("/",location.origin);u.searchParams.set("tag
 function qrTagPayload(){return {title:$("#qrTagTitle").value.trim(),description:$("#qrTagDescription").value.trim(),return_message:$("#qrTagMessage").value.trim()};}
 function refreshQrPreview(){const title=$("#qrTagTitle").value.trim()||"Твоя вещь";$("#qrPreviewTitle").textContent=title;$("#qrPreviewText").textContent=$("#qrTagDescription").value.trim()||"Отсканируй, чтобы открыть страницу возврата";$("#qrDescriptionCount").textContent=$("#qrTagDescription").value.length+" / 240";$("#qrMessageCount").textContent=$("#qrTagMessage").value.length+" / 240";}
 function drawTagQr(url){if(!window.QRCode){$("#qrTagError").textContent="Генератор QR не загрузился. Обнови страницу.";return false;}$("#qrTagCanvas").innerHTML="";new QRCode($("#qrTagCanvas"),{text:url,width:178,height:178,colorDark:"#17251d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H});return true;}
-function renderMyQrTags(){const list=readMyQrTags(),root=$("#myQrTagsList");if(!root)return;if(!list.length){root.innerHTML='<p class="my-qr-empty">Пока нет сохранённых QR-кодов. Создай первую метку.</p>';return;}root.innerHTML=list.map(x=>'<article class="my-qr-tag"><div><b>'+safe(x.title||"Метка без названия")+'</b><small>Создана · '+safe(new Date(x.createdAt||Date.now()).toLocaleDateString("ru-RU"))+'</small></div><div class="my-qr-tag-actions"><button type="button" data-tag-open="'+safe(x.id)+'">Открыть</button><button type="button" data-tag-edit="'+safe(x.id)+'">Изменить</button></div></article>').join("");}
+function renderMyQrTags(){const list=readMyQrTags(),root=$("#myQrTagsList");if(!root)return;if(!list.length){root.innerHTML='<p class="my-qr-empty">Пока нет сохранённых QR-кодов. Создай первую метку.</p>';return;}root.innerHTML=list.map(x=>'<article class="my-qr-tag"><div><b>'+safe(x.title||"Метка без названия")+'</b><small>Создана · '+safe(new Date(x.createdAt||Date.now()).toLocaleDateString("ru-RU"))+'</small></div><div class="my-qr-tag-actions"><button type="button" data-tag-open="'+safe(x.id)+'"><svg><use href="/icons.svg#external-link"/></svg> Открыть</button><button type="button" data-tag-edit="'+safe(x.id)+'"><svg><use href="/icons.svg#edit"/></svg> Изменить</button></div></article>').join("");}
 function showCreatedTag(tag,token){activeTagUrl=tagUrl(tag.id);activeTagManageToken=token||"";drawTagQr(activeTagUrl);$("#qrTagResult").classList.remove("hidden");$("#qrTagResult").querySelector("b").textContent="QR-код готов к печати";$("#qrPreviewTitle").textContent=tag.title||"Твоя вещь";$("#qrPreviewText").textContent=tag.description||"Отсканируй, чтобы открыть страницу возврата";$("#downloadTagKey").disabled=!token;$("#downloadTagKey").textContent=token?"Сохранить ключ управления":"Ключ сохранён ранее";}
 $("#qrTagForm")?.addEventListener("submit",async e=>{e.preventDefault();const error=$("#qrTagError"),button=$("#qrTagSubmit"),id=$("#qrTagForm").dataset.editId;error.textContent="";button.disabled=true;button.textContent=id?"Сохраняем…":"Создаём QR…";try{const payload=qrTagPayload();const saved=readMyQrTags();let response;if(id){const own=saved.find(x=>x.id===id);if(!own)throw Error("Ключ управления не найден на этом устройстве.");response=await fetch("/api/qr-tags/"+encodeURIComponent(id),{method:"PUT",headers:{"Content-Type":"application/json","X-Manage-Token":own.token},body:JSON.stringify(payload)});}else{response=await fetch("/api/qr-tags",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});}const result=await response.json();if(!response.ok)throw Error(result.error||"Не удалось сохранить QR.");if(id){const next=saved.map(x=>x.id===id?{...x,title:result.tag.title,description:result.tag.description,returnMessage:result.tag.returnMessage}:x);saveMyQrTags(next);showCreatedTag(result.tag,next.find(x=>x.id===id)?.token||"");}else{const record={id:result.tag.id,title:result.tag.title,description:result.tag.description,returnMessage:result.tag.returnMessage,createdAt:result.tag.createdAt,token:result.manageToken};saveMyQrTags([record,...saved]);showCreatedTag(result.tag,result.manageToken);}renderMyQrTags();$("#qrTagForm").dataset.editId="";$("#qrFormTitle").textContent="Создать QR-метку";$("#qrTagSubmit").innerHTML='<svg><use href="/icons.svg#qr-code"></use></svg> Создать бесплатный QR';$("#qrTagCancelEdit").classList.add("hidden");toast(id?"Информация QR обновлена.":"QR-метка создана.");}catch(err){error.textContent=err.message||"Ошибка соединения.";}finally{button.disabled=false;if(!$("#qrTagForm").dataset.editId)button.innerHTML='<svg><use href="/icons.svg#qr-code"></use></svg> Создать бесплатный QR';else button.textContent="Сохранить изменения";}});
 ["qrTagTitle","qrTagDescription","qrTagMessage"].forEach(id=>$("#"+id)?.addEventListener("input",refreshQrPreview));
 $("#qrTagCancelEdit")?.addEventListener("click",()=>{const f=$("#qrTagForm");f.reset();f.dataset.editId="";$("#qrFormTitle").textContent="Создать QR-метку";$("#qrTagSubmit").innerHTML='<svg><use href="/icons.svg#qr-code"></use></svg> Создать бесплатный QR';$("#qrTagCancelEdit").classList.add("hidden");$("#qrTagError").textContent="";refreshQrPreview();});
 $("#myQrTagsList")?.addEventListener("click",e=>{const edit=e.target.closest("[data-tag-edit]"),open=e.target.closest("[data-tag-open]");if(edit){const x=readMyQrTags().find(v=>v.id===edit.dataset.tagEdit);if(!x)return;$("#qrTagTitle").value=x.title||"";$("#qrTagDescription").value=x.description||"";$("#qrTagMessage").value=x.returnMessage||"";const f=$("#qrTagForm");f.dataset.editId=x.id;$("#qrFormTitle").textContent="Изменить QR-метку";$("#qrTagSubmit").textContent="Сохранить изменения";$("#qrTagCancelEdit").classList.remove("hidden");$("#qrTagError").textContent="";refreshQrPreview();$("#qrTags").scrollIntoView({behavior:"smooth"});}else if(open){const x=readMyQrTags().find(v=>v.id===open.dataset.tagOpen);if(x){showCreatedTag(x,x.token);$("#qrTags").scrollIntoView({behavior:"smooth"});}}});
 $("#downloadTagQr")?.addEventListener("click",()=>{const canvas=$("#qrTagCanvas canvas"),img=$("#qrTagCanvas img"),data=canvas?canvas.toDataURL("image/png"):img?.src;if(!data)return toast("QR ещё создаётся.");const a=document.createElement("a");a.href=data;a.download="topdim-tag-"+(new URL(activeTagUrl).searchParams.get("tag")||"qr")+".png";a.click();});
+
+$("#printTagQr")?.addEventListener("click",()=>{if(!activeTagUrl)return toast("Сначала создай QR-код.");document.body.classList.add("printing-tag");const done=()=>{document.body.classList.remove("printing-tag");window.removeEventListener("afterprint",done);};window.addEventListener("afterprint",done);window.print();setTimeout(done,120000);});
 $("#copyTagLink")?.addEventListener("click",async()=>{if(!activeTagUrl)return;try{await navigator.clipboard.writeText(activeTagUrl);toast("Ссылка скопирована.");}catch{toast("Не удалось скопировать ссылку.");}});
 $("#downloadTagKey")?.addEventListener("click",()=>{if(!activeTagManageToken)return toast("Ключ уже сохранён на этом устройстве.");const text="TOPDIM QR TAG — PRIVATE MANAGEMENT KEY\nURL: "+activeTagUrl+"\nMANAGEMENT KEY: "+activeTagManageToken+"\n\nKeep this key private. Anyone with this key can edit or deactivate this QR tag.";const blob=new Blob([text],{type:"text/plain;charset=utf-8"}),u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download="topdim-qr-management-key.txt";a.click();URL.revokeObjectURL(u);toast("Файл с ключом подготовлен.");});
+
+function decorateActionButtons(){
+ const rules=[['#clearFilters,#emptyReset','refresh'],['#searchBtn','search'],['#openQrScanner','scan-qr'],['#myLocationBtn,#captureLocation','crosshair'],['#mapReset','map'],['#partnerBtn','handshake'],['#submitBtn','send'],['#stopScanner','camera-off']];
+ rules.forEach(([selector,name])=>document.querySelectorAll(selector).forEach(btn=>{if(btn.querySelector("svg"))return;const svg=document.createElementNS("http://www.w3.org/2000/svg","svg"),use=document.createElementNS("http://www.w3.org/2000/svg","use");svg.setAttribute("aria-hidden","true");use.setAttribute("href","/icons.svg#"+name);svg.append(use);btn.prepend(svg);}));
+}
 async function openPublicTag(id){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)){toast("Некорректная QR-метка.");return;}const root=$("#publicTagContent");root.innerHTML="<p>Загружаем информацию…</p>";openQrLayer("publicTagBackdrop");try{const r=await fetch("/api/qr-tags/"+encodeURIComponent(id));const data=await r.json();if(!r.ok)throw Error(data.error||"QR-метка недоступна.");const x=data.tag;$("#publicTagTitle").textContent=x.title||"Информация о вещи";let content="";if(x.title)content+='<div class="public-tag-content-title">НАЗВАНИЕ ВЕЩИ</div>';if(x.description)content+='<div class="public-tag-description">'+safe(x.description)+'</div>';if(x.returnMessage)content+='<div class="public-tag-content-title">СООБЩЕНИЕ ОТ ВЛАДЕЛЬЦА</div><div class="public-tag-message">'+safe(x.returnMessage)+'</div>';if(!content)content='<div class="public-tag-empty">Владелец пока не добавил информацию. Если ты нашёл эту вещь, сохрани QR-страницу и попробуй проверить позже.</div>';root.innerHTML=content;history.replaceState(null,"",tagUrl(id));}catch(err){root.innerHTML='<div class="public-tag-empty">'+safe(err.message||"Не удалось открыть QR-метку.")+'</div>';}}
 document.querySelectorAll("[data-close-public-tag]").forEach(b=>b.addEventListener("click",()=>closeQrLayer("publicTagBackdrop")));
 $("#publicTagBackdrop")?.addEventListener("click",e=>{if(e.target.id==="publicTagBackdrop")closeQrLayer("publicTagBackdrop");});
-renderMyQrTags();refreshQrPreview();
+renderMyQrTags();refreshQrPreview();decorateActionButtons();
 const directTag=new URLSearchParams(location.search).get("tag");if(directTag)openPublicTag(directTag);
