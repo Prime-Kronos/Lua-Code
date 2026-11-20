@@ -156,3 +156,28 @@ footer{padding:28px clamp(24px,5vw,70px);background:#fff;border-top:1px solid #e
 .public-tag-dialog{text-align:left}.public-tag-mark{width:54px;height:54px;border-radius:17px;background:#edf7f0;color:#278257;display:grid;place-items:center;margin:16px 0}.public-tag-mark svg{width:29px;height:29px}.public-tag-dialog h2{margin:8px 0 12px}.public-tag-content-title{font-size:12px;color:#87918a;font-weight:700;letter-spacing:.3px}.public-tag-description,.public-tag-message{padding:14px;border:1px solid #e8eee9;background:#f8faf8;border-radius:12px;margin:10px 0;font-size:12px;line-height:1.75;color:#38423b;white-space:pre-wrap;overflow-wrap:anywhere}.public-tag-message{background:#f0f7f2;border-color:#dcebe1}.public-tag-empty{font-size:12px;line-height:1.7;color:#828c85;padding:14px;background:#f7f9f7;border-radius:12px}.public-tag-safe{display:flex;gap:9px;align-items:flex-start;border-top:1px solid #edf0ed;padding-top:14px;margin-top:16px;color:#8b948e;font-size:9px;line-height:1.6}.public-tag-safe svg{width:16px;flex:none;color:#39936a}
 @media(max-width:850px){.qr-builder{grid-template-columns:1fr}.qr-preview-panel{display:grid;grid-template-columns:1fr;justify-items:center}.qr-preview-top{width:100%}.qr-tag-result{width:100%}}
 @media(max-width:600px){.qr-tag-form,.qr-preview-panel{padding:17px;border-radius:15px}.my-qr-tags-list{grid-template-columns:1fr}.qr-my-head{align-items:start;gap:8px;flex-direction:column}.qr-free-badge{font-size:8px}.qr-result-actions{display:grid;grid-template-columns:1fr 1fr}.qr-result-actions button:last-child{grid-column:1/-1}}
+
+
+/* Low-latency controls and print-ready QR stickers. */
+button,.btn,.chip,.dock-link,.side-link{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.btn,.sidebar-create,.map-reset,.map-kind,.chip,.language-trigger,.language-option,.card-qr-btn,.my-qr-tag-actions button,.qr-close,.modal-close{transition:background-color .12s ease,border-color .12s ease,color .12s ease,box-shadow .12s ease}
+.btn:hover,.sidebar-create:hover,.map-reset:hover,.map-kind:hover,.chip:hover,.card-qr-btn:hover{transform:none!important}
+.btn:active,.sidebar-create:active,.map-reset:active,.map-kind:active,.chip:active,.card-qr-btn:active,.my-qr-tag-actions button:active{transform:scale(.985);transition:transform .08s ease}
+.btn:disabled{opacity:.58;cursor:wait;transform:none!important;box-shadow:none}
+.btn svg,.map-reset svg,.text-button svg,.qr-result-actions svg,.my-qr-tag-actions svg,.modal-close svg,.qr-close svg{width:16px;height:16px;flex:none}
+.language-trigger .action-icon{width:16px;height:16px;color:#6d7782}.language-trigger .chevron-icon{width:13px;height:13px}
+.sidebar-create-icon{width:28px;height:28px;display:grid;place-items:center;border-radius:9px;background:#ffffff20}.sidebar-create-icon svg{width:17px;height:17px}.sidebar-create>i svg{width:15px;height:15px}
+.reveal{transition:opacity .3s ease,transform .3s cubic-bezier(.2,.7,.2,1);filter:none!important}
+.listing-card{transform:none!important;transition:box-shadow .14s ease,border-color .14s ease}
+.listing-card:hover{transform:none!important}
+.app-sidebar,.mobile-dock{backdrop-filter:none}
+@media(max-width:800px){.app-sidebar,.mobile-dock{backdrop-filter:none}.btn{min-height:42px}.dock-link{min-height:44px}.qr-result-actions .btn{min-height:42px}}
+@media(prefers-reduced-motion:reduce){.btn,.chip,.listing-card,.reveal{transition:none!important;animation:none!important}}
+@media print{
+ body.printing-tag *{visibility:hidden!important}
+ body.printing-tag #qrPreviewCard,body.printing-tag #qrPreviewCard *{visibility:visible!important}
+ body.printing-tag #qrPreviewCard{position:fixed!important;left:50%!important;top:35mm!important;transform:translateX(-50%)!important;width:55mm!important;box-shadow:none!important;border:1px solid #ddd!important;padding:5mm!important;border-radius:3mm!important}
+ body.printing-tag #qrPreviewCard .qr-preview-code{width:42mm!important;height:42mm!important;padding:1mm!important;border:0!important}
+ body.printing-tag #qrPreviewCard .qr-preview-code canvas,body.printing-tag #qrPreviewCard .qr-preview-code img{width:40mm!important;height:40mm!important}
+ @page{size:A6 portrait;margin:8mm}
+}
