@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg"><defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs>
 <symbol id="pin-search" viewBox="0 0 64 64"><path d="M32 57S10 36 10 24a22 22 0 1 1 44 0c0 12-22 33-22 33Z" fill="#1678ff" stroke="#8bd6ff" stroke-width="2"/><circle cx="31" cy="24" r="9" fill="#06152f" stroke="#fff" stroke-width="4"/><path d="m38 31 9 9" stroke="#fff" stroke-width="4" stroke-linecap="round"/></symbol>
 <symbol id="search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="7.2"/><path d="m16.2 16.2 5 5"/></symbol><symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="map-pin" viewBox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
 <symbol id="package-check" viewBox="0 0 24 24"><path d="m12 3 9 5v9l-9 5-9-5V8l9-5Z"/><path d="m3.5 8.5 8.5 5 8.5-5M12 13.5V22m3-6 2 2 4-4"/></symbol><symbol id="shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></symbol>
