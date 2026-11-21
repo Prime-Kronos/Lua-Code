@@ -35,4 +35,4 @@ python bot.py
 The database tables are created automatically at startup.
 
 ## Deployment
-Use a persistent Render Background Worker for long polling. Set `BOT_TOKEN` and `DATABASE_URL` in Render Environment as secrets; optionally set `AUDD_API_TOKEN`. Never commit `.env` or paste bot tokens into source control.
+Deploy the included Render Blueprint as a web service using Telegram webhooks. The free Render web service may sleep after inactivity, so the first message after idle time can be delayed; 1–3 seconds cannot be guaranteed. Set `BOT_TOKEN` and `DATABASE_URL` in Render Environment as secrets; optionally set `AUDD_API_TOKEN`. Never commit `.env` or paste bot tokens into source control.
