@@ -187,7 +187,6 @@ def track_keyboard(track_id: int, lang: str) -> InlineKeyboardMarkup:
 @dp.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
-    await set_user(message.from_user.id)
     row = await db.fetchrow("SELECT language FROM users WHERE user_id=$1", message.from_user.id)
     # New users are asked to choose their language before the greeting.
     if not row or not row["language"]:
