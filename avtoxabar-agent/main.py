@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import httpx
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # prevent Telegram API URLs (and token) from appearing in logs
 log=logging.getLogger("avtoxabar")
 APP_NAME="AvtoXabar Agent"\nBOT_USERNAME="AvtoXabarApp_bot"
 BOT_TOKEN=os.getenv("BOT_TOKEN","").strip()
@@ -61,6 +62,11 @@ def init_db():
           match_mode TEXT NOT NULL DEFAULT 'contains', enabled BOOLEAN NOT NULL DEFAULT TRUE,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"""))
         c.execute(text("CREATE INDEX IF NOT EXISTS automation_rules_owner_kind ON automation_rules(telegram_id,kind)"))
+
+        # Upgrade old dedupe schema to chat-scoped keys without losing rows.
+        c.execute(text("ALTER TABLE processed_business_messages ADD COLUMN IF NOT EXISTS chat_id BIGINT NOT NULL DEFAULT 0"))
+        c.execute(text("ALTER TABLE processed_business_messages DROP CONSTRAINT IF EXISTS processed_business_messages_pkey"))
+        c.execute(text("ALTER TABLE processed_business_messages ADD CONSTRAINT processed_business_messages_pkey PRIMARY KEY(connection_id,chat_id,message_id)"))
 
         # Safe additive migrations for existing installs.
         for sql in [
