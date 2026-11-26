@@ -131,7 +131,8 @@ def remove_rule_api(rid:int,request:Request):
         z=db.execute(text("DELETE FROM automation_rules WHERE id=:id AND telegram_id=:uid"),{"id":rid,"uid":u["id"]})
         if z.rowcount<1:raise HTTPException(404,"Rule not found")
     return {"ok":True}
-\n@app.get("/health")
+
+@app.get("/health")
 def health(): return {"ok":True,"service":"avtoxabar-agent","bot_configured":bool(BOT_TOKEN),"database_configured":bool(engine)}
 @app.get("/api/config")
 def config(): return {"product":APP_NAME,"telegram_bot":"@AvtoXabar_agent","bot_ready":bool(BOT_TOKEN),"database_ready":bool(engine)}
@@ -246,8 +247,8 @@ async def handle_business_message(msg):
         for kind in ("scenario","keyword"):
             for rule in rules:
                 if rule["kind"]!=kind:continue
-                trigger=normalize_trigger(rule["trigger_text"])
-                matched=textnorm==trigger if rule["match_mode"]=="exact" else trigger in textnorm
+                triggers=[normalize_trigger(x) for x in re.split(r"[;,\\n]+",rule["trigger_text"]) if normalize_trigger(x)]
+                matched=any(textnorm==tr for tr in triggers) if rule["match_mode"]=="exact" else any(tr in textnorm for tr in triggers)
                 if trigger and matched:reply=rule["response_text"];break
             if reply:break
     if not reply:
