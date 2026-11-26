@@ -219,47 +219,49 @@ def business_settings(uid):
           JOIN business_connections b ON b.telegram_id=s.telegram_id AND b.is_enabled=TRUE
           WHERE s.telegram_id=:uid ORDER BY b.connected_at DESC LIMIT 1"""),{"uid":uid}).mappings().first()
 
+def normalize_trigger(value):
+    return re.sub(r"\\s+"," ",(value or "").lower()).strip()
 async def handle_business_message(msg):
-    bc_id=msg.get("business_connection_id"); sender=msg.get("from",{}); body=(msg.get("text") or msg.get("caption") or "").strip()
-    if not bc_id or not body or sender.get("is_bot"): return
-    if not engine: return
-    with engine.begin() as c:
-        conn=c.execute(text("SELECT telegram_id,is_enabled FROM business_connections WHERE connection_id=:cid"),{"cid":bc_id}).mappings().first()
-        if not conn or not conn["is_enabled"]: return
-        # Ignore outgoing messages authored by the connected business account itself.
-        if sender.get("id") == conn["telegram_id"]: return
-        # Telegram webhook retries are deduplicated by connection/message ID.
+    bc_id=msg.get("business_connection_id");sender=msg.get("from",{});body=(msg.get("text") or msg.get("caption") or "").strip()
+    if not bc_id or not body or sender.get("is_bot") or not engine:return
+    with engine.begin() as db:
+        conn=db.execute(text("SELECT telegram_id,is_enabled FROM business_connections WHERE connection_id=:cid"),{"cid":bc_id}).mappings().first()
+        if not conn or not conn["is_enabled"] or sender.get("id")==conn["telegram_id"]:return
         mid=msg.get("message_id")
         if mid is not None:
-            inserted=c.execute(text("""INSERT INTO processed_business_messages(connection_id,chat_id,message_id)
-              VALUES(:cid,:chat,:mid) ON CONFLICT DO NOTHING RETURNING message_id"""),{"cid":bc_id,"chat":msg.get("chat",{}).get("id"),"mid":mid}).scalar()
-            if inserted is None: return
-        s=c.execute(text("SELECT * FROM user_settings WHERE telegram_id=:uid"),{"uid":conn["telegram_id"]}).mappings().first()
-        c.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'incoming_business_message',CAST(:details AS JSONB))"),
-          {"uid":conn["telegram_id"],"details":json.dumps({"has_text":bool(body),"business_connection_id":bc_id})})
-    if not s or not s["auto_reply_enabled"]: return
-    reply=None
-    knowledge=(s["knowledge_text"] or "").strip()
-    # Deterministic FAQ matching: answer only when a keyword in the knowledge base is found.
-    if knowledge:
-        for line in knowledge.splitlines():
+            added=db.execute(text("INSERT INTO processed_business_messages(connection_id,chat_id,message_id) VALUES(:cid,:chat,:mid) ON CONFLICT DO NOTHING RETURNING message_id"),{"cid":bc_id,"chat":msg.get("chat",{}).get("id"),"mid":mid}).scalar()
+            if added is None:return
+        settings=db.execute(text("SELECT * FROM user_settings WHERE telegram_id=:uid"),{"uid":conn["telegram_id"]}).mappings().first()
+        rules=db.execute(text("SELECT * FROM automation_rules WHERE telegram_id=:uid AND enabled=TRUE ORDER BY CASE kind WHEN 'command' THEN 0 WHEN 'scenario' THEN 1 ELSE 2 END,id ASC"),{"uid":conn["telegram_id"]}).mappings().all()
+        db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'incoming_business_message',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"text_preview":body[:120]})})
+    if not settings or not settings["auto_reply_enabled"]:return
+    textnorm=normalize_trigger(body);reply=None
+    for rule in rules:
+        if rule["kind"]=="command" and textnorm==normalize_trigger(rule["trigger_text"]):
+            reply=rule["response_text"];break
+    if not reply:
+        for kind in ("scenario","keyword"):
+            for rule in rules:
+                if rule["kind"]!=kind:continue
+                trigger=normalize_trigger(rule["trigger_text"])
+                matched=textnorm==trigger if rule["match_mode"]=="exact" else trigger in textnorm
+                if trigger and matched:reply=rule["response_text"];break
+            if reply:break
+    if not reply:
+        legacy=(settings["knowledge_text"] or "").strip()
+        for line in legacy.splitlines():
             if ":" in line:
                 key,answer=line.split(":",1)
-                if key.strip() and key.strip().lower() in body.lower() and answer.strip():
-                    reply=answer.strip()[:4000]; break
-        if not reply and any(w in body.lower() for w in ("цена","сколько","price","narx")):
-            reply="Чтобы уточнить цену, напишите, пожалуйста, что именно вас интересует."
-    if not reply and s["welcome_enabled"]:
-        # Generic greeting only once per customer chat.
-        with engine.begin() as c:
-            first=c.execute(text("""INSERT INTO auto_reply_greetings(connection_id,chat_id)
-              VALUES(:cid,:chat) ON CONFLICT DO NOTHING RETURNING chat_id"""),{"cid":bc_id,"chat":msg.get("chat",{}).get("id")}).scalar()
-        if first:
-            reply=s["greeting_text"] or "Спасибо за сообщение! Мы скоро ответим."
+                if key.strip() and key.strip().lower() in textnorm and answer.strip():reply=answer.strip()[:4000];break
+    if not reply and settings["welcome_enabled"]:
+        with engine.begin() as db:
+            first=db.execute(text("INSERT INTO auto_reply_greetings(connection_id,chat_id) VALUES(:cid,:chat) ON CONFLICT DO NOTHING RETURNING chat_id"),{"cid":bc_id,"chat":msg.get("chat",{}).get("id")}).scalar()
+        if first:reply=settings["greeting_text"] or "Спасибо за сообщение! Мы скоро ответим."
     if reply:
         result=await tg("sendMessage",{"chat_id":msg.get("chat",{}).get("id"),"business_connection_id":bc_id,"text":reply})
-        if not result.get("ok"): log.warning("Business reply send failed: %s",result.get("description"))
-
+        if result.get("ok"):
+            with engine.begin() as db:db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'auto_reply_sent',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"matched_rule":True})})
+        else:log.warning("Business reply send failed: %s",result.get("description"))
 @app.post("/telegram/webhook")
 async def webhook(request:Request):
     if WEBHOOK_SECRET:
