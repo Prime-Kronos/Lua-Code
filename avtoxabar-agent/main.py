@@ -46,6 +46,14 @@ def init_db():
         c.execute(text("""CREATE TABLE IF NOT EXISTS message_events(
           id BIGSERIAL PRIMARY KEY, telegram_id BIGINT, event_type TEXT NOT NULL,
           details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"""))
+        c.execute(text("""CREATE TABLE IF NOT EXISTS processed_business_messages(
+          connection_id TEXT NOT NULL, message_id BIGINT NOT NULL,
+          processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY(connection_id,message_id))"""))
+        c.execute(text("""CREATE TABLE IF NOT EXISTS auto_reply_greetings(
+          connection_id TEXT NOT NULL, chat_id BIGINT NOT NULL,
+          sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY(connection_id,chat_id))"""))
         # Safe additive migrations for existing installs.
         for sql in [
           "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS greeting_text TEXT NOT NULL DEFAULT 'Здравствуйте! Спасибо за сообщение. Мы скоро ответим.'",
@@ -163,6 +171,14 @@ async def handle_business_message(msg):
     with engine.begin() as c:
         conn=c.execute(text("SELECT telegram_id,is_enabled FROM business_connections WHERE connection_id=:cid"),{"cid":bc_id}).mappings().first()
         if not conn or not conn["is_enabled"]: return
+        # Ignore outgoing messages authored by the connected business account itself.
+        if sender.get("id") == conn["telegram_id"]: return
+        # Telegram webhook retries are deduplicated by connection/message ID.
+        mid=msg.get("message_id")
+        if mid is not None:
+            inserted=c.execute(text("""INSERT INTO processed_business_messages(connection_id,message_id)
+              VALUES(:cid,:mid) ON CONFLICT DO NOTHING RETURNING message_id"""),{"cid":bc_id,"mid":mid}).scalar()
+            if inserted is None: return
         s=c.execute(text("SELECT * FROM user_settings WHERE telegram_id=:uid"),{"uid":conn["telegram_id"]}).mappings().first()
         c.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'incoming_business_message',CAST(:details AS JSONB))"),
           {"uid":conn["telegram_id"],"details":json.dumps({"has_text":bool(body),"business_connection_id":bc_id})})
@@ -179,7 +195,12 @@ async def handle_business_message(msg):
         if not reply and any(w in body.lower() for w in ("цена","сколько","price","narx")):
             reply="Чтобы уточнить цену, напишите, пожалуйста, что именно вас интересует."
     if not reply and s["welcome_enabled"]:
-        reply=s["greeting_text"] or "Спасибо за сообщение! Мы скоро ответим."
+        # Generic greeting only once per customer chat.
+        with engine.begin() as c:
+            first=c.execute(text("""INSERT INTO auto_reply_greetings(connection_id,chat_id)
+              VALUES(:cid,:chat) ON CONFLICT DO NOTHING RETURNING chat_id"""),{"cid":bc_id,"chat":msg.get("chat",{}).get("id")}).scalar()
+        if first:
+            reply=s["greeting_text"] or "Спасибо за сообщение! Мы скоро ответим."
     if reply:
         result=await tg("sendMessage",{"chat_id":msg.get("chat",{}).get("id"),"business_connection_id":bc_id,"text":reply})
         if not result.get("ok"): log.warning("Business reply send failed: %s",result.get("description"))
