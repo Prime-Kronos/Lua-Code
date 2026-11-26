@@ -1,4 +1,4 @@
-import os, json, logging, hmac, hashlib
+import os, json, logging, hmac, hashlib, re
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -54,12 +54,21 @@ def init_db():
           connection_id TEXT NOT NULL, chat_id BIGINT NOT NULL,
           sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           PRIMARY KEY(connection_id,chat_id))"""))
+        c.execute(text("""CREATE TABLE IF NOT EXISTS automation_rules(
+          id BIGSERIAL PRIMARY KEY, telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK(kind IN ('command','keyword','scenario')),
+          title TEXT NOT NULL DEFAULT '', trigger_text TEXT NOT NULL, response_text TEXT NOT NULL,
+          match_mode TEXT NOT NULL DEFAULT 'contains', enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"""))
+        c.execute(text("CREATE INDEX IF NOT EXISTS automation_rules_owner_kind ON automation_rules(telegram_id,kind)"))
+
         # Safe additive migrations for existing installs.
         for sql in [
           "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS greeting_text TEXT NOT NULL DEFAULT 'Здравствуйте! Спасибо за сообщение. Мы скоро ответим.'",
           "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS away_text TEXT NOT NULL DEFAULT 'Спасибо за сообщение! Сейчас мы не на связи. Ответим в рабочее время.'",
           "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS knowledge_text TEXT NOT NULL DEFAULT ''",
           "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS business_name TEXT NOT NULL DEFAULT ''",
+          "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS plan_key TEXT NOT NULL DEFAULT 'FREE'",
         ]: c.execute(text(sql))
 
 @app.on_event("startup")
@@ -76,7 +85,53 @@ async def startup():
                 log.info("Webhook setup status %s",r.status_code)
         except Exception: log.exception("Webhook setup failed")
 
-@app.get("/health")
+PLANS={"FREE":{"command":2,"keyword":10,"scenario":1},"PRO":{"command":5,"keyword":50,"scenario":5},"PREMIUM":{"command":10,"keyword":100,"scenario":20}}
+def get_rules(uid):
+    if not engine:return []
+    with engine.begin() as db:
+        return [dict(r) for r in db.execute(text("SELECT id,kind,title,trigger_text,response_text,match_mode,enabled FROM automation_rules WHERE telegram_id=:uid ORDER BY id DESC"),{"uid":uid}).mappings().all()]
+def plan_for(uid):
+    if not engine:return "FREE"
+    with engine.begin() as db:p=db.execute(text("SELECT plan_key FROM user_settings WHERE telegram_id=:uid"),{"uid":uid}).scalar()
+    return p if p in PLANS else "FREE"
+@app.get("/api/app/rules")
+def get_rules_api(request:Request):
+    u=require_user(request);persist_user(u);p=plan_for(u["id"])
+    return {"rules":get_rules(u["id"]),"plan":p,"limits":PLANS[p]}
+@app.post("/api/app/rules")
+async def add_rule_api(request:Request):
+    u=require_user(request);persist_user(u);d=await request.json()
+    kind=d.get("kind");trigger=(d.get("trigger_text") or "").strip();answer=(d.get("response_text") or "").strip()
+    if kind not in PLANS["FREE"] or not trigger or not answer:raise HTTPException(400,"Type, trigger and answer are required")
+    mode=d.get("match_mode","contains");title=(d.get("title") or "").strip()[:80]
+    if kind=="command":
+        if not re.fullmatch(r"/[a-zA-Z0-9_]{2,32}",trigger):raise HTTPException(400,"Command format should be /delivery")
+        mode="exact"
+    if mode not in ("exact","contains"):raise HTTPException(400,"Invalid match mode")
+    if len(trigger)>300 or len(answer)>4000:raise HTTPException(400,"Text too long")
+    plan=plan_for(u["id"]);limit=PLANS[plan][kind]
+    with engine.begin() as db:
+        count=db.execute(text("SELECT COUNT(*) FROM automation_rules WHERE telegram_id=:u AND kind=:k"),{"u":u["id"],"k":kind}).scalar()
+        if count>=limit:raise HTTPException(403,"Tariff limit reached; upgrade plan.")
+        rid=db.execute(text("INSERT INTO automation_rules(telegram_id,kind,title,trigger_text,response_text,match_mode) VALUES(:u,:k,:t,:tr,:a,:m) RETURNING id"),{"u":u["id"],"k":kind,"t":title,"tr":trigger,"a":answer,"m":mode}).scalar()
+    return {"ok":True,"id":rid}
+@app.put("/api/app/rules/{rid}")
+async def edit_rule_api(rid:int,request:Request):
+    u=require_user(request);d=await request.json();allowed={"title","trigger_text","response_text","match_mode","enabled"};v={k:d[k] for k in allowed if k in d}
+    if not v:return {"ok":True}
+    v.update({"id":rid,"uid":u["id"]});sets=", ".join(k+"=:"+k for k in v if k not in ("id","uid"))
+    with engine.begin() as db:
+        z=db.execute(text("UPDATE automation_rules SET "+sets+",updated_at=NOW() WHERE id=:id AND telegram_id=:uid"),v)
+        if z.rowcount<1:raise HTTPException(404,"Rule not found")
+    return {"ok":True}
+@app.delete("/api/app/rules/{rid}")
+def remove_rule_api(rid:int,request:Request):
+    u=require_user(request)
+    with engine.begin() as db:
+        z=db.execute(text("DELETE FROM automation_rules WHERE id=:id AND telegram_id=:uid"),{"id":rid,"uid":u["id"]})
+        if z.rowcount<1:raise HTTPException(404,"Rule not found")
+    return {"ok":True}
+\n@app.get("/health")
 def health(): return {"ok":True,"service":"avtoxabar-agent","bot_configured":bool(BOT_TOKEN),"database_configured":bool(engine)}
 @app.get("/api/config")
 def config(): return {"product":APP_NAME,"telegram_bot":"@AvtoXabar_agent","bot_ready":bool(BOT_TOKEN),"database_ready":bool(engine)}
