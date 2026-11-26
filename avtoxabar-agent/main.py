@@ -47,9 +47,9 @@ def init_db():
           id BIGSERIAL PRIMARY KEY, telegram_id BIGINT, event_type TEXT NOT NULL,
           details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"""))
         c.execute(text("""CREATE TABLE IF NOT EXISTS processed_business_messages(
-          connection_id TEXT NOT NULL, message_id BIGINT NOT NULL,
+          connection_id TEXT NOT NULL, chat_id BIGINT NOT NULL, message_id BIGINT NOT NULL,
           processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          PRIMARY KEY(connection_id,message_id))"""))
+          PRIMARY KEY(connection_id,chat_id,message_id))"""))
         c.execute(text("""CREATE TABLE IF NOT EXISTS auto_reply_greetings(
           connection_id TEXT NOT NULL, chat_id BIGINT NOT NULL,
           sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -176,8 +176,8 @@ async def handle_business_message(msg):
         # Telegram webhook retries are deduplicated by connection/message ID.
         mid=msg.get("message_id")
         if mid is not None:
-            inserted=c.execute(text("""INSERT INTO processed_business_messages(connection_id,message_id)
-              VALUES(:cid,:mid) ON CONFLICT DO NOTHING RETURNING message_id"""),{"cid":bc_id,"mid":mid}).scalar()
+            inserted=c.execute(text("""INSERT INTO processed_business_messages(connection_id,chat_id,message_id)
+              VALUES(:cid,:chat,:mid) ON CONFLICT DO NOTHING RETURNING message_id"""),{"cid":bc_id,"chat":msg.get("chat",{}).get("id"),"mid":mid}).scalar()
             if inserted is None: return
         s=c.execute(text("SELECT * FROM user_settings WHERE telegram_id=:uid"),{"uid":conn["telegram_id"]}).mappings().first()
         c.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'incoming_business_message',CAST(:details AS JSONB))"),
