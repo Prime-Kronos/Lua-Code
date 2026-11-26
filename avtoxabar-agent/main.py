@@ -135,9 +135,9 @@ async def send_start(chat_id: int, user: dict):
         webapp_button["url"] = "https://t.me/AvtoXabar_agent"
     keyboard = {"keyboard": [[webapp_button], [{"text": "⚙️ Настройки"}, {"text": "❓ Помощь"}]],
                 "resize_keyboard": True}
-    welcome = (f"Привет, {name}! 👋\\n\\nЯ AvtoXabar Agent — помощник для автоматизации общения "
-              "в Telegram Business.\\n\\nЧерез сайт можно посмотреть панель, настроить ответы и "
-              "подготовить подключение Business-аккаунта.\\n\\nСейчас проект в ранней версии.")
+    welcome = (f"Привет, {name}! 👋\n\nЯ AvtoXabar Agent — помощник для автоматизации общения "
+              "в Telegram Business.\n\nЧерез сайт можно посмотреть панель, настроить ответы и "
+              "подготовить подключение Business-аккаунта.\n\nСейчас проект в ранней версии.")
     await telegram_call("sendMessage", {"chat_id": chat_id, "text": welcome, "reply_markup": keyboard})
 
 @app.post("/telegram/webhook")
@@ -157,7 +157,7 @@ async def telegram_webhook(request: Request):
                 await send_start(chat_id, user)
             elif text_msg.startswith("/help") and chat_id:
                 await telegram_call("sendMessage", {"chat_id": chat_id,
-                  "text": "Команды:\\n/start — начать\\n/help — помощь\\n/settings — настройки\\n\\nДля автоответов Business подключение и настройки будут доступны в веб-панели."})
+                  "text": "Команды:\n/start — начать\n/help — помощь\n/settings — настройки\n\nДля автоответов Business подключение и настройки будут доступны в веб-панели."})
             elif text_msg.startswith("/settings") and chat_id:
                 link = PUBLIC_URL or "https://t.me/AvtoXabar_agent"
                 await telegram_call("sendMessage", {"chat_id": chat_id, "text": "Открой панель настроек:", "reply_markup":{"inline_keyboard":[[{"text":"Открыть сайт","url":link}]]}})
