@@ -139,7 +139,11 @@ def config(): return {"product":APP_NAME,"telegram_bot":"@AvtoXabar_agent","bot_
 @app.get("/",response_class=HTMLResponse)
 def home(): return Path("static/index.html").read_text(encoding="utf-8")
 @app.get("/app",response_class=HTMLResponse)
-def miniapp(): return Path("static/miniapp.html").read_text(encoding="utf-8")
+def miniapp():
+    response=HTMLResponse(Path("static/miniapp.html").read_text(encoding="utf-8"))
+    response.headers["Cache-Control"]="no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"]="no-cache"
+    return response
 
 async def tg(method,payload):
     if not BOT_TOKEN: return {"ok":False,"description":"Bot token is not configured"}
@@ -210,7 +214,7 @@ async def update_settings(request:Request):
 async def start_user(chat_id,user):
     persist_user(user)
     name=user.get("first_name") or "друг"
-    keyboard={"inline_keyboard":[[{"text":"🌐 Открыть AvtoXabar","web_app":{"url":PUBLIC_URL+"/app"}}]]} if PUBLIC_URL else None
+    keyboard={"inline_keyboard":[[{"text":"🌐 Открыть AvtoXabar","web_app":{"url":PUBLIC_URL+"/app?v=20261126-2"}}]]} if PUBLIC_URL else None
     message=f"Привет, {name}! 👋\n\nAvtoXabar Agent помогает настроить ответы для Telegram Business. Открой мини-приложение и настрой автоответы, приветствие, расписание и базу знаний.\n\nПодключи Business через настройки Telegram, затем включи автоответы."
     payload={"chat_id":chat_id,"text":message}
     if keyboard: payload["reply_markup"]=keyboard
