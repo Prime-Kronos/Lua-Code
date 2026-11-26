@@ -12,7 +12,8 @@ import httpx
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)  # prevent Telegram API URLs (and token) from appearing in logs
 log=logging.getLogger("avtoxabar")
-APP_NAME="AvtoXabar Agent"\nBOT_USERNAME="AvtoXabarApp_bot"
+APP_NAME="AvtoXabar Agent"
+BOT_USERNAME="AvtoXabarApp_bot"
 BOT_TOKEN=os.getenv("BOT_TOKEN","").strip()
 WEBHOOK_SECRET=os.getenv("WEBHOOK_SECRET","").strip()
 DATABASE_URL=os.getenv("DATABASE_URL","").strip()
@@ -85,7 +86,9 @@ async def startup():
     if BOT_TOKEN and PUBLIC_URL and WEBHOOK_SECRET:
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                me=await client.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe")\n                log.info("Configured Telegram bot identity: %s", me.json().get("result",{}).get("username","UNKNOWN"))\n                r=await client.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+                me=await client.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe")
+                log.info("Configured Telegram bot identity: %s", me.json().get("result",{}).get("username","UNKNOWN"))
+                r=await client.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
                   json={"url":f"{PUBLIC_URL}/telegram/webhook","secret_token":WEBHOOK_SECRET,
                         "allowed_updates":["message","business_message","business_connection"]})
                 log.info("Webhook setup status %s: %s",r.status_code,r.text[:300])
@@ -141,7 +144,7 @@ def remove_rule_api(rid:int,request:Request):
 @app.get("/health")
 def health(): return {"ok":True,"service":"avtoxabar-agent","bot_configured":bool(BOT_TOKEN),"database_configured":bool(engine)}
 @app.get("/api/config")
-def config(): return {"product":APP_NAME,"telegram_bot":"@AvtoXabarApp_bot","bot_ready":bool(BOT_TOKEN),"database_ready":bool(engine)}
+def config(): return {"product":APP_NAME,"telegram_bot":"@"+BOT_USERNAME,"bot_ready":bool(BOT_TOKEN),"database_ready":bool(engine)}
 @app.get("/",response_class=HTMLResponse)
 def home(): return Path("static/index.html").read_text(encoding="utf-8")
 @app.get("/app",response_class=HTMLResponse)
