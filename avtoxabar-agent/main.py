@@ -247,7 +247,7 @@ async def handle_business_message(msg):
         for kind in ("scenario","keyword"):
             for rule in rules:
                 if rule["kind"]!=kind:continue
-                triggers=[normalize_trigger(x) for x in re.split(r"[;,\\n]+",rule["trigger_text"]) if normalize_trigger(x)]
+                triggers=[normalize_trigger(x) for x in rule["trigger_text"].replace(",", ";").replace(chr(10), ";").split(";") if normalize_trigger(x)]
                 matched=any(textnorm==tr for tr in triggers) if rule["match_mode"]=="exact" else any(tr in textnorm for tr in triggers)
                 if trigger and matched:reply=rule["response_text"];break
             if reply:break
