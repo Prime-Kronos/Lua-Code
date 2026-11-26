@@ -234,7 +234,7 @@ def business_settings(uid):
           WHERE s.telegram_id=:uid ORDER BY b.connected_at DESC LIMIT 1"""),{"uid":uid}).mappings().first()
 
 def normalize_trigger(value):
-    return re.sub(r"\\s+"," ",(value or "").lower()).strip()
+    return re.sub(r"\s+"," ",(value or "").lower()).strip()
 async def handle_business_message(msg):
     bc_id=msg.get("business_connection_id");sender=msg.get("from",{});body=(msg.get("text") or msg.get("caption") or "").strip()
     if not bc_id or not body or sender.get("is_bot") or not engine:return
