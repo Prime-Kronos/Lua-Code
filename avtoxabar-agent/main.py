@@ -184,7 +184,10 @@ def get_settings(request:Request):
     with engine.begin() as c:
         row=c.execute(text("SELECT * FROM user_settings WHERE telegram_id=:id"),{"id":user["id"]}).mappings().first()
         connections=c.execute(text("SELECT COUNT(*) FROM business_connections WHERE telegram_id=:id AND is_enabled=TRUE"),{"id":user["id"]}).scalar()
-    return {"user":{"id":user["id"],"first_name":user.get("first_name","")},"settings":dict(row) if row else {},"business_connections":connections or 0}
+    plan=plan_for(user["id"]);limits=PLANS[plan]
+    with engine.begin() as c:
+        stats=c.execute(text("SELECT COUNT(*) FILTER(WHERE event_type='incoming_business_message') incoming, COUNT(*) FILTER(WHERE event_type='auto_reply_sent') replied FROM message_events WHERE telegram_id=:id"),{"id":user["id"]}).mappings().first()
+    return {"user":{"id":user["id"],"first_name":user.get("first_name","")},"settings":dict(row) if row else {},"business_connections":connections or 0,"plan":plan,"limits":limits,"rules":get_rules(user["id"]),"stats":dict(stats) if stats else {"incoming":0,"replied":0}}
 
 @app.post("/api/app/settings")
 async def update_settings(request:Request):
