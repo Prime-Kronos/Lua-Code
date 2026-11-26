@@ -40,7 +40,8 @@ def init_db():
           business_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE, reply_language TEXT NOT NULL DEFAULT 'auto',
           greeting_text TEXT NOT NULL DEFAULT 'Здравствуйте! Спасибо за сообщение. Мы скоро ответим.',
           away_text TEXT NOT NULL DEFAULT 'Спасибо за сообщение! Сейчас мы не на связи. Ответим в рабочее время.',
-          knowledge_text TEXT NOT NULL DEFAULT '', business_name TEXT NOT NULL DEFAULT '',
+                    knowledge_text TEXT NOT NULL DEFAULT '', business_name TEXT NOT NULL DEFAULT '',
+          work_days TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7', work_start TEXT NOT NULL DEFAULT '09:00', work_end TEXT NOT NULL DEFAULT '18:00', timezone TEXT NOT NULL DEFAULT 'Asia/Tashkent',
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"""))
         c.execute(text("""CREATE TABLE IF NOT EXISTS business_connections(
           connection_id TEXT PRIMARY KEY, telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
@@ -76,6 +77,10 @@ def init_db():
           "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS knowledge_text TEXT NOT NULL DEFAULT ''",
           "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS business_name TEXT NOT NULL DEFAULT ''",
           "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS plan_key TEXT NOT NULL DEFAULT 'FREE'",
+          "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS work_days TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7'",
+          "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS work_start TEXT NOT NULL DEFAULT '09:00'",
+          "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS work_end TEXT NOT NULL DEFAULT '18:00'",
+          "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'Asia/Tashkent'",
         ]: c.execute(text(sql))
 
 @app.on_event("startup")
@@ -208,9 +213,18 @@ async def update_settings(request:Request):
     user=require_user(request); persist_user(user)
     if not engine: raise HTTPException(503,detail="Database is not configured")
     data=await request.json()
-    allowed={"auto_reply_enabled","welcome_enabled","business_hours_enabled","reply_language","greeting_text","away_text","knowledge_text","business_name"}
+    allowed={"auto_reply_enabled","welcome_enabled","business_hours_enabled","reply_language","greeting_text","away_text","knowledge_text","business_name","work_days","work_start","work_end","timezone"}
     vals={k:data[k] for k in allowed if k in data}
     if "reply_language" in vals and vals["reply_language"] not in {"auto","ru","uz","en"}: raise HTTPException(400,"Invalid language")
+    if "work_days" in vals:
+        try:
+            days={int(x) for x in str(vals["work_days"]).split(",") if x}
+            if not days or not days.issubset(set(range(1,8))): raise ValueError()
+            vals["work_days"]=",".join(str(x) for x in sorted(days))
+        except Exception: raise HTTPException(400,"Invalid working days")
+    for key in ("work_start","work_end"):
+        if key in vals and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d",str(vals[key])): raise HTTPException(400,"Invalid time format")
+    if "timezone" in vals and vals["timezone"] not in {"Asia/Tashkent","Europe/Moscow","UTC"}: raise HTTPException(400,"Unsupported timezone")
     for k in ("greeting_text","away_text","knowledge_text","business_name"):
         if k in vals and len(str(vals[k]))>5000: raise HTTPException(400,f"{k} too long")
     if not vals: return {"ok":True}
@@ -252,6 +266,22 @@ async def handle_business_message(msg):
         rules=db.execute(text("SELECT * FROM automation_rules WHERE telegram_id=:uid AND enabled=TRUE ORDER BY CASE kind WHEN 'command' THEN 0 WHEN 'scenario' THEN 1 ELSE 2 END,id ASC"),{"uid":conn["telegram_id"]}).mappings().all()
         db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'incoming_business_message',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"text_preview":body[:120]})})
     if not settings or not settings["auto_reply_enabled"]:return
+    if settings.get("business_hours_enabled"):
+        from zoneinfo import ZoneInfo
+        now=datetime.now(ZoneInfo(settings.get("timezone") or "Asia/Tashkent"))
+        days=set(str(settings.get("work_days") or "1,2,3,4,5,6,7").split(","))
+        start=(settings.get("work_start") or "09:00").split(":")
+        end=(settings.get("work_end") or "18:00").split(":")
+        minute=now.hour*60+now.minute
+        start_min=int(start[0])*60+int(start[1]);end_min=int(end[0])*60+int(end[1])
+        within=(str(now.isoweekday()) in days and ((start_min<=minute<end_min) if start_min<=end_min else (minute>=start_min or minute<end_min)))
+        if not within:
+            away=(settings.get("away_text") or "").strip()
+            if away:
+                result=await tg("sendMessage",{"chat_id":msg.get("chat",{}).get("id"),"business_connection_id":bc_id,"text":away})
+                if result.get("ok"):
+                    with engine.begin() as db: db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'auto_reply_sent',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"away":True})})
+            return
     textnorm=normalize_trigger(body);reply=None
     for rule in rules:
         if rule["kind"]=="command" and textnorm==normalize_trigger(rule["trigger_text"]):
