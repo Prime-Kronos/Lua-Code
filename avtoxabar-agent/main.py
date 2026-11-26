@@ -11,7 +11,7 @@ import httpx
 
 logging.basicConfig(level=logging.INFO)
 log=logging.getLogger("avtoxabar")
-APP_NAME="AvtoXabar Agent"
+APP_NAME="AvtoXabar Agent"\nBOT_USERNAME="AvtoXabarApp_bot"
 BOT_TOKEN=os.getenv("BOT_TOKEN","").strip()
 WEBHOOK_SECRET=os.getenv("WEBHOOK_SECRET","").strip()
 DATABASE_URL=os.getenv("DATABASE_URL","").strip()
@@ -79,10 +79,10 @@ async def startup():
     if BOT_TOKEN and PUBLIC_URL and WEBHOOK_SECRET:
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                r=await client.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+                me=await client.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe")\n                log.info("Configured Telegram bot identity: %s", me.json().get("result",{}).get("username","UNKNOWN"))\n                r=await client.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
                   json={"url":f"{PUBLIC_URL}/telegram/webhook","secret_token":WEBHOOK_SECRET,
                         "allowed_updates":["message","business_message","business_connection"]})
-                log.info("Webhook setup status %s",r.status_code)
+                log.info("Webhook setup status %s: %s",r.status_code,r.text[:300])
         except Exception: log.exception("Webhook setup failed")
 
 PLANS={"FREE":{"command":2,"keyword":10,"scenario":1},"PRO":{"command":5,"keyword":50,"scenario":5},"PREMIUM":{"command":10,"keyword":100,"scenario":20}}
@@ -135,7 +135,7 @@ def remove_rule_api(rid:int,request:Request):
 @app.get("/health")
 def health(): return {"ok":True,"service":"avtoxabar-agent","bot_configured":bool(BOT_TOKEN),"database_configured":bool(engine)}
 @app.get("/api/config")
-def config(): return {"product":APP_NAME,"telegram_bot":"@AvtoXabar_agent","bot_ready":bool(BOT_TOKEN),"database_ready":bool(engine)}
+def config(): return {"product":APP_NAME,"telegram_bot":"@AvtoXabarApp_bot","bot_ready":bool(BOT_TOKEN),"database_ready":bool(engine)}
 @app.get("/",response_class=HTMLResponse)
 def home(): return Path("static/index.html").read_text(encoding="utf-8")
 @app.get("/app",response_class=HTMLResponse)
@@ -253,7 +253,7 @@ async def handle_business_message(msg):
                 if rule["kind"]!=kind:continue
                 triggers=[normalize_trigger(x) for x in rule["trigger_text"].replace(",", ";").replace(chr(10), ";").split(";") if normalize_trigger(x)]
                 matched=any(textnorm==tr for tr in triggers) if rule["match_mode"]=="exact" else any(tr in textnorm for tr in triggers)
-                if trigger and matched:reply=rule["response_text"];break
+                if matched:reply=rule["response_text"];break
             if reply:break
     if not reply:
         legacy=(settings["knowledge_text"] or "").strip()
