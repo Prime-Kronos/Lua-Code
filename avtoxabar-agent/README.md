@@ -36,7 +36,7 @@ The bot's `/start` reply includes a Web App button linking to `https://avtoxabar
 
 ## Telegram Business setup (account owner)
 1. In Telegram, open Settings → Telegram Business → Chatbots (wording may vary).
-2. Connect `@AvtoXabar_agent` and grant the message access needed for reply handling.
+2. Connect `@AvtoXabarApp_bot` and grant the message access needed for reply handling.
 3. Open the Mini App from the bot's `/start` button, save settings and enable auto replies.
 4. Test with a separate test account first. The bot only uses saved rule/greeting settings; no AI generation is enabled.
 
