@@ -284,8 +284,12 @@ async def handle_business_message(msg):
             return
     textnorm=normalize_trigger(body);reply=None
     for rule in rules:
-        if rule["kind"]=="command" and textnorm==normalize_trigger(rule["trigger_text"]):
-            reply=rule["response_text"];break
+        if rule["kind"]=="command":
+            # Telegram may append @botname to Business commands; strip it for matching.
+            incoming_cmd=re.sub(r"@[A-Za-z0-9_]+$", "", textnorm.split()[0]) if textnorm.startswith("/") and textnorm.split() else textnorm
+            expected_cmd=normalize_trigger(rule["trigger_text"])
+            if incoming_cmd==expected_cmd:
+                reply=rule["response_text"];break
     if not reply:
         for kind in ("scenario","keyword"):
             for rule in rules:
