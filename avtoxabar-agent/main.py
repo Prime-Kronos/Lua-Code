@@ -121,7 +121,7 @@ PLANS={"FREE":{"command":2,"keyword":10,"scenario":1},"PRO":{"command":5,"keywor
 def get_rules(uid):
     if not engine:return []
     with engine.begin() as db:
-        return [dict(r) for r in db.execute(text("SELECT id,kind,title,trigger_text,response_text,match_mode,enabled FROM automation_rules WHERE telegram_id=:uid ORDER BY id DESC"),{"uid":uid}).mappings().all()]
+        return [dict(r) for r in db.execute(text("SELECT id,kind,title,trigger_text,response_text,match_mode,enabled,priority FROM automation_rules WHERE telegram_id=:uid ORDER BY priority DESC,id DESC"),{"uid":uid}).mappings().all()]
 def plan_for(uid):
     if not engine:return "FREE"
     with engine.begin() as db:p=db.execute(text("SELECT plan_key FROM user_settings WHERE telegram_id=:uid"),{"uid":uid}).scalar()
@@ -149,7 +149,7 @@ async def add_rule_api(request:Request):
     return {"ok":True,"id":rid}
 @app.put("/api/app/rules/{rid}")
 async def edit_rule_api(rid:int,request:Request):
-    u=require_user(request);d=await request.json();allowed={"title","trigger_text","response_text","match_mode","enabled"};v={k:d[k] for k in allowed if k in d}
+    u=require_user(request);d=await request.json();allowed={"title","trigger_text","response_text","match_mode","enabled","priority"};v={k:d[k] for k in allowed if k in d}
     if not v:return {"ok":True}
     v.update({"id":rid,"uid":u["id"]});sets=", ".join(k+"=:"+k for k in v if k not in ("id","uid"))
     with engine.begin() as db:
@@ -229,11 +229,13 @@ async def broadcast_api(request:Request):
     confirm=d.get("confirm") is True
     with engine.begin() as db:
         subs=db.execute(text("SELECT chat_id FROM broadcast_optins WHERE telegram_id=:u"),{"u":u["id"]}).scalars().all()
+        connection=db.execute(text("SELECT connection_id FROM business_connections WHERE telegram_id=:u AND is_enabled=TRUE ORDER BY connected_at DESC LIMIT 1"),{"u":u["id"]}).scalar()
     if not confirm:return {"preview":True,"opted_in":len(subs),"message":message}
+    if not connection:raise HTTPException(409,"Connect Telegram Business first")
     if len(subs)>500:raise HTTPException(403,"Batch limit 500; contact support for compliant delivery")
     sent=0;failed=0
     for chat in subs:
-        res=await tg("sendMessage",{"chat_id":chat,"text":message})
+        res=await tg("sendMessage",{"chat_id":chat,"business_connection_id":connection,"text":message})
         if res.get("ok"):sent+=1
         else:failed+=1
     with engine.begin() as db:db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:u,'broadcast_sent',CAST(:d AS JSONB))"),{"u":u["id"],"d":json.dumps({"sent":sent,"failed":failed,"total":len(subs)})})
@@ -355,7 +357,7 @@ async def handle_business_message(msg):
             added=db.execute(text("INSERT INTO processed_business_messages(connection_id,chat_id,message_id) VALUES(:cid,:chat,:mid) ON CONFLICT DO NOTHING RETURNING message_id"),{"cid":bc_id,"chat":msg.get("chat",{}).get("id"),"mid":mid}).scalar()
             if added is None:return
         settings=db.execute(text("SELECT * FROM user_settings WHERE telegram_id=:uid"),{"uid":conn["telegram_id"]}).mappings().first()
-        rules=db.execute(text("SELECT * FROM automation_rules WHERE telegram_id=:uid AND enabled=TRUE ORDER BY CASE kind WHEN 'command' THEN 0 WHEN 'scenario' THEN 1 ELSE 2 END,id ASC"),{"uid":conn["telegram_id"]}).mappings().all()
+        rules=db.execute(text("SELECT * FROM automation_rules WHERE telegram_id=:uid AND enabled=TRUE ORDER BY priority DESC,CASE kind WHEN 'command' THEN 0 WHEN 'scenario' THEN 1 ELSE 2 END,id ASC"),{"uid":conn["telegram_id"]}).mappings().all()
         db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'incoming_business_message',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"text_preview":body[:120]})})
     # CRM upsert + voluntary broadcast subscription controls, handled before normal rules.
     chat_id=msg.get("chat",{}).get("id"); customer_id=sender.get("id")
