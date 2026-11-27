@@ -266,44 +266,54 @@ async def handle_business_message(msg):
         rules=db.execute(text("SELECT * FROM automation_rules WHERE telegram_id=:uid AND enabled=TRUE ORDER BY CASE kind WHEN 'command' THEN 0 WHEN 'scenario' THEN 1 ELSE 2 END,id ASC"),{"uid":conn["telegram_id"]}).mappings().all()
         db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'incoming_business_message',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"text_preview":body[:120]})})
     if not settings or not settings["auto_reply_enabled"]:return
+    # Calculate schedule status, but do not let Away Reply block matching commands/keywords.
+    within_hours=True
     if settings.get("business_hours_enabled"):
         from zoneinfo import ZoneInfo
-        now=datetime.now(ZoneInfo(settings.get("timezone") or "Asia/Tashkent"))
-        days=set(str(settings.get("work_days") or "1,2,3,4,5,6,7").split(","))
-        start=(settings.get("work_start") or "09:00").split(":")
-        end=(settings.get("work_end") or "18:00").split(":")
-        minute=now.hour*60+now.minute
-        start_min=int(start[0])*60+int(start[1]);end_min=int(end[0])*60+int(end[1])
-        within=(str(now.isoweekday()) in days and ((start_min<=minute<end_min) if start_min<=end_min else (minute>=start_min or minute<end_min)))
-        if not within:
-            away=(settings.get("away_text") or "").strip()
-            if away:
-                result=await tg("sendMessage",{"chat_id":msg.get("chat",{}).get("id"),"business_connection_id":bc_id,"text":away})
-                if result.get("ok"):
-                    with engine.begin() as db: db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'auto_reply_sent',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"away":True})})
-            return
-    textnorm=normalize_trigger(body);reply=None
+        try:
+            now=datetime.now(ZoneInfo(settings.get("timezone") or "Asia/Tashkent"))
+            days=set(str(settings.get("work_days") or "1,2,3,4,5,6,7").split(","))
+            start=(settings.get("work_start") or "09:00").split(":")
+            end=(settings.get("work_end") or "18:00").split(":")
+            minute=now.hour*60+now.minute
+            start_min=int(start[0])*60+int(start[1]);end_min=int(end[0])*60+int(end[1])
+            within_hours=(str(now.isoweekday()) in days and ((start_min<=minute<end_min) if start_min<=end_min else (minute>=start_min or minute<end_min)))
+        except Exception:
+            log.exception("Working-hours calculation failed; allowing rules to run")
+            within_hours=True
+    textnorm=normalize_trigger(body);reply=None;matched_kind=None
+    # Rules are checked first: commands and keywords must work even outside business hours.
     for rule in rules:
-        if rule["kind"]=="command":
-            # Telegram may append @botname to Business commands; strip it for matching.
-            incoming_cmd=re.sub(r"@[A-Za-z0-9_]+$", "", textnorm.split()[0]) if textnorm.startswith("/") and textnorm.split() else textnorm
-            expected_cmd=normalize_trigger(rule["trigger_text"])
-            if incoming_cmd==expected_cmd:
-                reply=rule["response_text"];break
+        if rule["kind"]!="command":continue
+        expected=normalize_trigger(rule["trigger_text"])
+        expected=re.sub(r"@[A-Za-z0-9_]+$","",expected)
+        incoming_match=re.match(r"^(/[^\\s@]+)(?:@[A-Za-z0-9_]+)?(?:\\s|$)",textnorm)
+        incoming_cmd=incoming_match.group(1) if incoming_match else ""
+        if incoming_cmd==expected:
+            reply=rule["response_text"];matched_kind="command";break
     if not reply:
         for kind in ("scenario","keyword"):
             for rule in rules:
                 if rule["kind"]!=kind:continue
                 triggers=[normalize_trigger(x) for x in rule["trigger_text"].replace(",", ";").replace(chr(10), ";").split(";") if normalize_trigger(x)]
                 matched=any(textnorm==tr for tr in triggers) if rule["match_mode"]=="exact" else any(tr in textnorm for tr in triggers)
-                if matched:reply=rule["response_text"];break
+                if matched:reply=rule["response_text"];matched_kind=kind;break
             if reply:break
     if not reply:
         legacy=(settings["knowledge_text"] or "").strip()
         for line in legacy.splitlines():
             if ":" in line:
                 key,answer=line.split(":",1)
-                if key.strip() and key.strip().lower() in textnorm and answer.strip():reply=answer.strip()[:4000];break
+                if key.strip() and key.strip().lower() in textnorm and answer.strip():reply=answer.strip()[:4000];matched_kind="faq";break
+    # Outside-hours reply is fallback, not an override of a matched trigger.
+    if not reply and not within_hours:
+        away=(settings.get("away_text") or "").strip()
+        if away:
+            result=await tg("sendMessage",{"chat_id":msg.get("chat",{}).get("id"),"business_connection_id":bc_id,"text":away})
+            if result.get("ok"):
+                with engine.begin() as db: db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'auto_reply_sent',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"away":True})})
+        return
+    # Greeting is only used once per chat when no trigger/FAQ matched during working hours.
     if not reply and settings["welcome_enabled"]:
         with engine.begin() as db:
             first=db.execute(text("INSERT INTO auto_reply_greetings(connection_id,chat_id) VALUES(:cid,:chat) ON CONFLICT DO NOTHING RETURNING chat_id"),{"cid":bc_id,"chat":msg.get("chat",{}).get("id")}).scalar()
@@ -311,7 +321,7 @@ async def handle_business_message(msg):
     if reply:
         result=await tg("sendMessage",{"chat_id":msg.get("chat",{}).get("id"),"business_connection_id":bc_id,"text":reply})
         if result.get("ok"):
-            with engine.begin() as db:db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'auto_reply_sent',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"matched_rule":True})})
+            with engine.begin() as db:db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'auto_reply_sent',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"matched_rule":matched_kind or "welcome"})})
         else:log.warning("Business reply send failed: %s",result.get("description"))
 @app.post("/telegram/webhook")
 async def webhook(request:Request):
