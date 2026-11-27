@@ -57,6 +57,9 @@ def init_db():
           connection_id TEXT NOT NULL, chat_id BIGINT NOT NULL,
           sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           PRIMARY KEY(connection_id,chat_id))"""))
+        c.execute(text("""CREATE TABLE IF NOT EXISTS away_reply_log(
+          connection_id TEXT NOT NULL, chat_id BIGINT NOT NULL, reply_date DATE NOT NULL,
+          sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(connection_id,chat_id,reply_date))"""))
         c.execute(text("""CREATE TABLE IF NOT EXISTS automation_rules(
           id BIGSERIAL PRIMARY KEY, telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
           kind TEXT NOT NULL CHECK(kind IN ('command','keyword','scenario')),
@@ -309,9 +312,14 @@ async def handle_business_message(msg):
     if not reply and not within_hours:
         away=(settings.get("away_text") or "").strip()
         if away:
-            result=await tg("sendMessage",{"chat_id":msg.get("chat",{}).get("id"),"business_connection_id":bc_id,"text":away})
-            if result.get("ok"):
-                with engine.begin() as db: db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'auto_reply_sent',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"away":True})})
+            from zoneinfo import ZoneInfo
+            away_day=datetime.now(ZoneInfo(settings.get("timezone") or "Asia/Tashkent")).date()
+            with engine.begin() as db:
+                first_away=db.execute(text("INSERT INTO away_reply_log(connection_id,chat_id,reply_date) VALUES(:cid,:chat,:day) ON CONFLICT DO NOTHING RETURNING reply_date"),{"cid":bc_id,"chat":msg.get("chat",{}).get("id"),"day":away_day}).scalar()
+            if first_away:
+                result=await tg("sendMessage",{"chat_id":msg.get("chat",{}).get("id"),"business_connection_id":bc_id,"text":away})
+                if result.get("ok"):
+                    with engine.begin() as db: db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'auto_reply_sent',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"away":True})})
         return
     # Greeting is only used once per chat when no trigger/FAQ matched during working hours.
     if not reply and settings["welcome_enabled"]:
