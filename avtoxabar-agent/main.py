@@ -67,6 +67,21 @@ def init_db():
           match_mode TEXT NOT NULL DEFAULT 'contains', enabled BOOLEAN NOT NULL DEFAULT TRUE,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"""))
         c.execute(text("CREATE INDEX IF NOT EXISTS automation_rules_owner_kind ON automation_rules(telegram_id,kind)"))
+        c.execute(text("ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0"))
+        c.execute(text("""CREATE TABLE IF NOT EXISTS business_customers(
+          telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+          chat_id BIGINT NOT NULL, customer_user_id BIGINT, username TEXT, first_name TEXT,
+          message_count INTEGER NOT NULL DEFAULT 0, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), tags TEXT NOT NULL DEFAULT '',
+          notes TEXT NOT NULL DEFAULT '', PRIMARY KEY(telegram_id,chat_id))"""))
+        c.execute(text("""CREATE TABLE IF NOT EXISTS broadcast_optins(
+          telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+          chat_id BIGINT NOT NULL, customer_user_id BIGINT, opted_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY(telegram_id,chat_id))"""))
+        c.execute(text("""CREATE TABLE IF NOT EXISTS automation_notify_cooldowns(
+          telegram_id BIGINT NOT NULL, chat_id BIGINT NOT NULL, last_notified TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY(telegram_id,chat_id))"""))
+
 
         # Upgrade old dedupe schema to chat-scoped keys without losing rows.
         c.execute(text("ALTER TABLE processed_business_messages ADD COLUMN IF NOT EXISTS chat_id BIGINT NOT NULL DEFAULT 0"))
@@ -149,6 +164,80 @@ def remove_rule_api(rid:int,request:Request):
         if z.rowcount<1:raise HTTPException(404,"Rule not found")
     return {"ok":True}
 
+@app.post("/api/app/test")
+async def trigger_test_api(request:Request):
+    u=require_user(request);d=await request.json();msg=(d.get("message") or "").strip()
+    if not msg:raise HTTPException(400,"Test message required")
+    if len(msg)>4000:raise HTTPException(400,"Message too long")
+    with engine.begin() as db:
+        rules=db.execute(text("SELECT id,kind,title,trigger_text,response_text,match_mode,enabled,priority FROM automation_rules WHERE telegram_id=:u AND enabled=TRUE ORDER BY priority DESC,CASE kind WHEN 'command' THEN 0 WHEN 'scenario' THEN 1 ELSE 2 END,id ASC"),{"u":u["id"]}).mappings().all()
+        settings=db.execute(text("SELECT knowledge_text,greeting_text,away_text FROM user_settings WHERE telegram_id=:u"),{"u":u["id"]}).mappings().first()
+    normalized=normalize_trigger(msg);matched=None
+    for rule in rules:
+        if rule["kind"]=="command":
+            incoming=re.match(r"^(/[^\\s@]+)(?:@[A-Za-z0-9_]+)?(?:\\s|$)",normalized)
+            if incoming and incoming.group(1)==re.sub(r"@[A-Za-z0-9_]+$","",normalize_trigger(rule["trigger_text"])):
+                matched=rule;break
+    if not matched:
+        for kind in ("scenario","keyword"):
+            for rule in rules:
+                if rule["kind"]!=kind:continue
+                triggers=[normalize_trigger(x) for x in rule["trigger_text"].replace(",", ";").replace(chr(10), ";").split(";") if normalize_trigger(x)]
+                hit=any(normalized==t for t in triggers) if rule["match_mode"]=="exact" else any(t in normalized for t in triggers)
+                if hit:matched=rule;break
+            if matched:break
+    if not matched and settings and settings["knowledge_text"]:
+        for line in settings["knowledge_text"].splitlines():
+            if ":" in line:
+                key,ans=line.split(":",1)
+                if key.strip() and key.strip().lower() in normalized and ans.strip():
+                    return {"match":"faq","trigger":key.strip(),"response":ans.strip(),"simulation":True}
+    return {"match":matched["kind"] if matched else "none","rule_id":matched["id"] if matched else None,"title":matched["title"] if matched else None,"trigger":matched["trigger_text"] if matched else None,"response":matched["response_text"] if matched else (settings["away_text"] if settings else ""),"simulation":True}
+@app.get("/api/app/logs")
+def automation_logs_api(request:Request,limit:int=50):
+    u=require_user(request);limit=max(1,min(limit,100))
+    with engine.begin() as db:
+        rows=db.execute(text("SELECT event_type,details,created_at FROM message_events WHERE telegram_id=:u ORDER BY id DESC LIMIT :lim"),{"u":u["id"],"lim":limit}).mappings().all()
+    return {"logs":[{"type":x["event_type"],"details":x["details"],"created_at":x["created_at"].isoformat()} for x in rows]}
+@app.get("/api/app/clients")
+def crm_clients_api(request:Request,limit:int=100):
+    u=require_user(request);limit=max(1,min(limit,200))
+    with engine.begin() as db:
+        rows=db.execute(text("SELECT chat_id,customer_user_id,username,first_name,message_count,first_seen,last_seen,tags,notes FROM business_customers WHERE telegram_id=:u ORDER BY last_seen DESC LIMIT :lim"),{"u":u["id"],"lim":limit}).mappings().all()
+    return {"clients":[dict(x) for x in rows]}
+@app.put("/api/app/clients/{chat_id}")
+async def crm_update_api(chat_id:int,request:Request):
+    u=require_user(request);d=await request.json();tags=str(d.get("tags",""))[:250];notes=str(d.get("notes",""))[:1000]
+    with engine.begin() as db:
+        z=db.execute(text("UPDATE business_customers SET tags=:tags,notes=:notes WHERE telegram_id=:u AND chat_id=:chat"),{"tags":tags,"notes":notes,"u":u["id"],"chat":chat_id})
+    if not z.rowcount:raise HTTPException(404,"Client not found")
+    return {"ok":True}
+@app.get("/api/app/analytics")
+def analytics_api(request:Request):
+    u=require_user(request)
+    with engine.begin() as db:
+        counts=db.execute(text("""SELECT COUNT(*) FILTER(WHERE event_type='incoming_business_message') incoming,
+          COUNT(*) FILTER(WHERE event_type='auto_reply_sent') replies,
+          COUNT(*) FILTER(WHERE event_type='unmatched_message') unmatched
+          FROM message_events WHERE telegram_id=:u AND created_at>=NOW()-INTERVAL '30 days'"""),{"u":u["id"]}).mappings().first()
+        popular=db.execute(text("SELECT details->>'matched_rule' rule,COUNT(*) n FROM message_events WHERE telegram_id=:u AND event_type='auto_reply_sent' AND created_at>=NOW()-INTERVAL '30 days' GROUP BY 1 ORDER BY n DESC LIMIT 10"),{"u":u["id"]}).mappings().all()
+    return {"period_days":30,"counts":dict(counts),"popular": [dict(x) for x in popular]}
+@app.post("/api/app/broadcast")
+async def broadcast_api(request:Request):
+    u=require_user(request);d=await request.json();message=(d.get("message") or "").strip()
+    if not message or len(message)>3500:raise HTTPException(400,"Message required (max 3500 characters)")
+    confirm=d.get("confirm") is True
+    with engine.begin() as db:
+        subs=db.execute(text("SELECT chat_id FROM broadcast_optins WHERE telegram_id=:u"),{"u":u["id"]}).scalars().all()
+    if not confirm:return {"preview":True,"opted_in":len(subs),"message":message}
+    if len(subs)>500:raise HTTPException(403,"Batch limit 500; contact support for compliant delivery")
+    sent=0;failed=0
+    for chat in subs:
+        res=await tg("sendMessage",{"chat_id":chat,"text":message})
+        if res.get("ok"):sent+=1
+        else:failed+=1
+    with engine.begin() as db:db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:u,'broadcast_sent',CAST(:d AS JSONB))"),{"u":u["id"],"d":json.dumps({"sent":sent,"failed":failed,"total":len(subs)})})
+    return {"ok":True,"sent":sent,"failed":failed,"total":len(subs)}
 @app.get("/health")
 def health(): return {"ok":True,"service":"avtoxabar-agent","bot_configured":bool(BOT_TOKEN),"database_configured":bool(engine)}
 @app.get("/api/config")
