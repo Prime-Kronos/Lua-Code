@@ -150,7 +150,7 @@ async def add_rule_api(request:Request):
 @app.put("/api/app/rules/{rid}")
 async def edit_rule_api(rid:int,request:Request):
     u=require_user(request);d=await request.json();allowed={"title","trigger_text","response_text","match_mode","enabled","priority"};v={k:d[k] for k in allowed if k in d}
-    if not v:return {"ok":True}
+    if "priority" in v:\n        try:v["priority"]=max(0,min(100,int(v["priority"])))\n        except Exception:raise HTTPException(400,"Priority must be 0-100")\n    if not v:return {"ok":True}
     v.update({"id":rid,"uid":u["id"]});sets=", ".join(k+"=:"+k for k in v if k not in ("id","uid"))
     with engine.begin() as db:
         z=db.execute(text("UPDATE automation_rules SET "+sets+",updated_at=NOW() WHERE id=:id AND telegram_id=:uid"),v)
@@ -175,7 +175,7 @@ async def trigger_test_api(request:Request):
     normalized=normalize_trigger(msg);matched=None
     for rule in rules:
         if rule["kind"]=="command":
-            incoming=re.match(r"^(/[^\\s@]+)(?:@[A-Za-z0-9_]+)?(?:\\s|$)",normalized)
+            incoming=re.match(r"^(/[^\s@]+)(?:@[A-Za-z0-9_]+)?(?:\s|$)",normalized)
             if incoming and incoming.group(1)==re.sub(r"@[A-Za-z0-9_]+$","",normalize_trigger(rule["trigger_text"])):
                 matched=rule;break
     if not matched:
@@ -399,7 +399,7 @@ async def handle_business_message(msg):
         if rule["kind"]!="command":continue
         expected=normalize_trigger(rule["trigger_text"])
         expected=re.sub(r"@[A-Za-z0-9_]+$","",expected)
-        incoming_match=re.match(r"^(/[^\\s@]+)(?:@[A-Za-z0-9_]+)?(?:\\s|$)",textnorm)
+        incoming_match=re.match(r"^(/[^\s@]+)(?:@[A-Za-z0-9_]+)?(?:\s|$)",textnorm)
         incoming_cmd=incoming_match.group(1) if incoming_match else ""
         if incoming_cmd==expected:
             reply=rule["response_text"];matched_kind="command";break
