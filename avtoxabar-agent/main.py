@@ -357,6 +357,24 @@ async def handle_business_message(msg):
         settings=db.execute(text("SELECT * FROM user_settings WHERE telegram_id=:uid"),{"uid":conn["telegram_id"]}).mappings().first()
         rules=db.execute(text("SELECT * FROM automation_rules WHERE telegram_id=:uid AND enabled=TRUE ORDER BY CASE kind WHEN 'command' THEN 0 WHEN 'scenario' THEN 1 ELSE 2 END,id ASC"),{"uid":conn["telegram_id"]}).mappings().all()
         db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'incoming_business_message',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"text_preview":body[:120]})})
+    # CRM upsert + voluntary broadcast subscription controls, handled before normal rules.
+    chat_id=msg.get("chat",{}).get("id"); customer_id=sender.get("id")
+    with engine.begin() as db:
+        db.execute(text("""INSERT INTO business_customers(telegram_id,chat_id,customer_user_id,username,first_name,message_count,last_seen)
+          VALUES(:owner,:chat,:cid,:username,:name,1,NOW()) ON CONFLICT(telegram_id,chat_id) DO UPDATE SET
+          customer_user_id=EXCLUDED.customer_user_id,username=EXCLUDED.username,first_name=EXCLUDED.first_name,
+          message_count=business_customers.message_count+1,last_seen=NOW()"""),
+          {"owner":conn["telegram_id"],"chat":chat_id,"cid":customer_id,"username":sender.get("username"),"name":sender.get("first_name")})
+    command_text=body.lower().strip()
+    if command_text in {"/subscribe","subscribe","подписаться","обновления"}:
+        with engine.begin() as db:
+            db.execute(text("INSERT INTO broadcast_optins(telegram_id,chat_id,customer_user_id) VALUES(:owner,:chat,:cid) ON CONFLICT DO NOTHING"),{"owner":conn["telegram_id"],"chat":chat_id,"cid":customer_id})
+        await tg("sendMessage",{"chat_id":chat_id,"business_connection_id":bc_id,"text":"Вы подписаны на новости и обновления. Для отказа отправьте /unsubscribe."})
+        return
+    if command_text in {"/unsubscribe","unsubscribe","отписаться"}:
+        with engine.begin() as db:db.execute(text("DELETE FROM broadcast_optins WHERE telegram_id=:owner AND chat_id=:chat"),{"owner":conn["telegram_id"],"chat":chat_id})
+        await tg("sendMessage",{"chat_id":chat_id,"business_connection_id":bc_id,"text":"Вы отписались от рассылок."})
+        return
     if not settings or not settings["auto_reply_enabled"]:return
     # Calculate schedule status, but do not let Away Reply block matching commands/keywords.
     within_hours=True
@@ -397,6 +415,13 @@ async def handle_business_message(msg):
             if ":" in line:
                 key,answer=line.split(":",1)
                 if key.strip() and key.strip().lower() in textnorm and answer.strip():reply=answer.strip()[:4000];matched_kind="faq";break
+    if not reply:
+        with engine.begin() as db:
+            db.execute(text("INSERT INTO message_events(telegram_id,event_type,details) VALUES(:uid,'unmatched_message',CAST(:details AS JSONB))"),{"uid":conn["telegram_id"],"details":json.dumps({"chat_id":chat_id,"preview":body[:120]})})
+            should_notify=db.execute(text("INSERT INTO automation_notify_cooldowns(telegram_id,chat_id,last_notified) VALUES(:u,:c,NOW()) ON CONFLICT(telegram_id,chat_id) DO UPDATE SET last_notified=NOW() WHERE automation_notify_cooldowns.last_notified<NOW()-INTERVAL '12 hours' RETURNING chat_id"),{"u":conn["telegram_id"],"c":chat_id}).scalar()
+        if should_notify:
+            notify_text="AvtoXabar: необработанное обращение.\n"+body[:500]+"\nСоздайте триггер или FAQ в панели."
+            await tg("sendMessage",{"chat_id":conn["telegram_id"],"text":notify_text})
     # Outside-hours reply is fallback, not an override of a matched trigger.
     if not reply and not within_hours:
         away=(settings.get("away_text") or "").strip()
